@@ -1,0 +1,26 @@
+{
+  "name": "git-researcher",
+  "version": "3.0.0",
+  "type": "module",
+  "description": "Breaks down an idea, discovers relevant GitHub repositories via DuckDuckGo+dorks, analyzes them with cascade Claude agents and generates structured analysis documents.",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dry": "node src/pipeline.js --idea 'rust vector database demo' --dry-run",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "coverage": "node --test --experimental-test-coverage \"tests/**/*.test.js\"",
+    "lint": "eslint src tests index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "cheerio": "^1.0.0-rc.12",
+    "ora": "^8.0.1",
+    "puppeteer": "^22.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}
