@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fallbackDiscover } from '../src/discovery/githubApiFallback.js';
+import { fallbackDiscover, fetchOpenIssues } from '../src/discovery/githubApiFallback.js';
 
 test('fallbackDiscover maps API results into RepoCandidate', async () => {
   const mockFetch = async () => ({
@@ -46,4 +46,26 @@ test('fallbackDiscover propagates HTTP errors', async () => {
     () => fallbackDiscover({ keywords: ['x'] }, { fetchImpl: mockFetch }),
     /403/
   );
+});
+
+test('fetchOpenIssues maps items and excludes pull requests', async () => {
+  const mockFetch = async () => ({
+    ok: true,
+    json: async () => [
+      { title: 'Bug A', body: 'body A' },
+      { title: 'PR B', body: 'pr body', pull_request: { url: 'x' } },
+      { title: 'Bug C', body: 'body C' },
+    ],
+  });
+  const res = await fetchOpenIssues({ fullName: 'a/b' }, { fetchImpl: mockFetch });
+  assert.equal(res.length, 2, 'PR excluded');
+  assert.equal(res[0].title, 'Bug A');
+  assert.equal(res[1].title, 'Bug C');
+  assert.equal(res[0].body, 'body A');
+});
+
+test('fetchOpenIssues returns [] on API error (never throws)', async () => {
+  const mockFetch = async () => ({ ok: false, status: 403, json: async () => ({}) });
+  const res = await fetchOpenIssues({ fullName: 'a/b' }, { fetchImpl: mockFetch });
+  assert.deepEqual(res, []);
 });

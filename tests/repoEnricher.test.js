@@ -12,6 +12,7 @@ const ghHtml = (owner, repo) =>
     <meta name="description" content="${repo} - high-performance vector search engine and database">
    </head><body>
     <a href="/${owner}/${repo}/stargazers" id="repo-stars-counter-star">20.1k</a>
+    <a id="issues-repo-tab-count" href="/${owner}/${repo}/issues">Issues 42</a>
     <span itemprop="programmingLanguage">rust</span>
     <a class="topic-tag">vector</a><a class="topic-tag">database</a>
     <relative-time datetime="2026-06-01T00:00:00Z">Jun 1</relative-time>
@@ -25,6 +26,7 @@ test('parseGithub extracts stars/topics/lastUpdated/readme', () => {
   });
   assert.equal(r.fullName, 'qdrant/qdrant');
   assert.equal(r.stars, 20100);
+  assert.equal(r.openIssues, 42);
   assert.equal(r.language, 'rust');
   assert.deepEqual(r.topics, ['vector', 'database']);
   assert.equal(r.lastUpdated, '2026-06-01T00:00:00Z');

@@ -12,6 +12,7 @@ import { extractIntent } from './discovery/intentExtractor.js';
 import { searchRepos } from './discovery/duckSearch.js';
 import { preRank, rankRepos } from './discovery/ranker.js';
 import { enrichRepos } from './discovery/repoEnricher.js';
+import { fetchOpenIssues } from './discovery/githubApiFallback.js';
 import { analyzeRepo } from './analysis/repoAnalyzer.js';
 import { runCascade } from './analysis/cascadeOrchestrator.js';
 import { synthesizeReport } from './analysis/synthesizer.js';
@@ -51,12 +52,12 @@ export async function tryResume() {
  * @returns {{intent:Object,search:Object,enrich:Object,claudeMd:Object,cascade:Object}}
  */
 function buildPhaseDeps(dry, mocks) {
-  if (!dry) return { intent: {}, search: {}, enrich: {}, claudeMd: {}, cascade: {} };
+  if (!dry) return { intent: {}, search: {}, enrich: {}, claudeMd: { fetchIssues: fetchOpenIssues }, cascade: {} };
   return {
     intent: { runClaudeJSONWithRetry: mocks.mockIntent },
     search: { fetchImpl: mocks.mockFetch, cache: NOOP_CACHE },
     enrich: { getPage: mocks.mockGetPage, cache: NOOP_CACHE },
-    claudeMd: { runClaude: mocks.mockClaudeMd },
+    claudeMd: { runClaude: mocks.mockClaudeMd, fetchIssues: mocks.mockFetchIssues },
     cascade: { runClaude: mocks.mockClaudeMd, runClaudeJSONWithRetry: mocks.mockModules },
   };
 }

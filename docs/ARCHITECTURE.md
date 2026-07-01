@@ -99,7 +99,7 @@ mocks -> testability without network and without mocking ESM.
 |---|---|
 | `duckSearch.searchRepos` | `{ fetchImpl?, parseResults?, cache? }` |
 | `repoEnricher.enrichRepos` | `{ getPage?, cache? }` |
-| `repoAnalyzer.analyzeRepo` | `{ runClaude? }` |
+| `repoAnalyzer.analyzeRepo` | `{ runClaude?, fetchIssues? }` |
 | `cascadeOrchestrator.runCascade` | `{ runClaude?, runClaudeJSONWithRetry? }` |
 | `synthesizer.synthesizeReport` | `{ runClaude? }` |
 | `core/claude.runClaude` | `{ spawn? }` (injectable spawner) |

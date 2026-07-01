@@ -138,8 +138,12 @@ defaultBranch, `lastUpdated` **from `<relative-time datetime>`**, readmeSnippet.
 `config.TOP_N_REPOS`. Tolerates `stars`/`lastUpdated` undefined.
 
 ### `repoAnalyzer.js`
-`analyzeRepo(repo, intent, deps = {})` -> `RepoAnalysis`. `deps.runClaude`. Anti-injection + English
-output. On Claude error returns a "failed" analysis (does not propagate).
+`analyzeRepo(repo, intent, deps = {})` -> `RepoAnalysis`. `deps.runClaude`, `deps.fetchIssues`
+(default no-op; the pipeline injects `githubApiFallback.fetchOpenIssues` in real runs). Surfaces the
+most discussed open issues as real user pain points to ground the "limitations/risks" and
+"lessons for the user's idea" sections. Low-signal guard: metadata-only mode when the README is
+missing/tiny; the system prompt forbids requesting tools/permissions. Anti-injection + English output.
+On Claude error returns a "failed" analysis (does not propagate).
 
 ### `cascadeOrchestrator.js`
 `runCascade(intent, repoAnalyses, deps = {})` -> `{ modules, analyses }`. **Phase 1 via
@@ -170,7 +174,7 @@ IntentResult:   project_name, description, components[], technologies[], keyword
 
 RepoCandidate:  fullName ("owner/repo"), url, title, snippet    <- title/snippet from the DDG SERP
 
-RepoEnriched:   fullName, url, description, stars?, language,
+RepoEnriched:   fullName, url, description, stars?, openIssues?, language,
                 topics[], readmeSnippet, defaultBranch, lastUpdated?
 
 RankedRepo:     RepoEnriched + score, scoreBreakdown { tier -> value }

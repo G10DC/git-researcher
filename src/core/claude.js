@@ -76,6 +76,11 @@ export async function runClaude(
   return new Promise((resolve, reject) => {
     const args = ['-p', '--model', 'sonnet', '--no-session-persistence'];
     if (systemPrompt) args.push('--system-prompt', systemPrompt);
+    // Determinism/model flags. The Claude Code CLI does not expose --temperature as of v2.1.x,
+    // so CLAUDE_EXTRA_ARGS is a forward-compatible hook (e.g. CLAUDE_EXTRA_ARGS="--temperature 0").
+    if (process.env.CLAUDE_EXTRA_ARGS) {
+      args.push(...process.env.CLAUDE_EXTRA_ARGS.split(/\s+/).filter(Boolean));
+    }
 
     const child = spawnFn('claude', args, { stdio: ['pipe', 'pipe', 'pipe'], cwd });
 

@@ -21,16 +21,15 @@ function parseCount(text) {
   return Math.round(n);
 }
 
-/**
- * Extracts stars: GitHub counter, with an "N stars" regex fallback on the description.
- * @param {import('cheerio').CheerioAPI} $
- * @param {string} description
- * @returns {number|undefined}
- */
+/** Reads a GitHub counter element (aria-label or text) via parseCount. */
+function counterFrom($, selector) {
+  const el = $(selector).first();
+  return el.length ? parseCount(el.attr('aria-label') || el.text()) : undefined;
+}
+
+/** Stars: GitHub counter, with an "N stars" regex fallback on the description. */
 function extractStars($, description) {
-  const starEl = $('#repo-stars-counter-star, #repo-network-counter, a[href$="/stargazers"]').first();
-  let stars;
-  if (starEl.length) stars = parseCount(starEl.attr('aria-label') || starEl.text());
+  let stars = counterFrom($, '#repo-stars-counter-star, #repo-network-counter, a[href$="/stargazers"]');
   if (stars === undefined) {
     const m = description.match(/([\d.]+\s*[km]?)\s*stars/i);
     if (m) stars = parseCount(m[1]);
@@ -59,6 +58,7 @@ export function parseGithub(html, base) {
   }
 
   const stars = extractStars($, description);
+  const openIssues = counterFrom($, '#issues-repo-tab-count, #issues-tab .Counter, a[href$="/issues"] .Counter');
 
   const language = $('span[itemprop="programmingLanguage"]').first().text().trim() || undefined;
 
@@ -79,6 +79,7 @@ export function parseGithub(html, base) {
     url: base.url,
     description: description || undefined,
     stars,
+    openIssues,
     language,
     topics: topics.length ? topics : undefined,
     readmeSnippet: readmeSnippet || undefined,

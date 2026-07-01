@@ -7,7 +7,7 @@
  * @param {string} idea
  * @returns {{
  *   mockIntent:Function, mockModules:Function, mockClaudeMd:Function,
- *   mockFetch:Function, mockGetPage:Function
+ *   mockFetch:Function, mockGetPage:Function, mockFetchIssues:Function
  * }}
  */
 export function createDryRunMocks(idea) {
@@ -54,6 +54,7 @@ export function createDryRunMocks(idea) {
         <meta name="description" content="${repo} - high-performance vector search engine and database">
        </head><body>
         <a href="/${owner}/${repo}/stargazers" id="repo-stars-counter-star">20.1k</a>
+        <a id="issues-repo-tab-count" href="/${owner}/${repo}/issues">Issues 15</a>
         <span itemprop="programmingLanguage">rust</span>
         <a class="topic-tag">vector</a><a class="topic-tag">database</a>
         <relative-time datetime="${new Date(Date.now() - 5 * 86400000).toISOString()}">5 days ago</relative-time>
@@ -62,5 +63,10 @@ export function createDryRunMocks(idea) {
     );
   };
 
-  return { mockIntent, mockModules, mockClaudeMd, mockFetch, mockGetPage };
+  const mockFetchIssues = async () => [
+    { title: 'Memory grows unbounded on large datasets', body: 'Reported by several users on 10M+ vectors.' },
+    { title: 'Add disk-based index option', body: '' },
+  ];
+
+  return { mockIntent, mockModules, mockClaudeMd, mockFetch, mockGetPage, mockFetchIssues };
 }

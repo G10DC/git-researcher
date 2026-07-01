@@ -104,3 +104,23 @@ test('runClaudeJSONWithRetry does not retry if the first attempt succeeds', asyn
   assert.equal(calls, 1);
   assert.deepEqual(r, { ok: true });
 });
+
+test('runClaude appends CLAUDE_EXTRA_ARGS to the spawn args (determinism hook)', async () => {
+  _resetProbe();
+  const prev = process.env.CLAUDE_EXTRA_ARGS;
+  process.env.CLAUDE_EXTRA_ARGS = '--temperature 0';
+  try {
+    let captured = null;
+    const spawn = (_cmd, args) => {
+      if (args.includes('--version')) return makeChild({ exitCode: 0 });
+      captured = args;
+      return makeChild({ stdout: 'ok' });
+    };
+    await runClaude('p', 's', 5000, '.', { spawn });
+    assert.ok(captured.includes('--temperature'), 'extra flag passed through');
+    assert.ok(captured.includes('0'));
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_EXTRA_ARGS;
+    else process.env.CLAUDE_EXTRA_ARGS = prev;
+  }
+});
