@@ -9,7 +9,8 @@ modules + specialists), with each informing the other.
 
 > 📐 **Spec & plan**: [`PIANIFICAZIONE/`](./PIANIFICAZIONE/SPEC_GitResearcher.md) ·
 > 🏗️ **Architecture (Mermaid diagrams)**: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
-> 📒 **Changelog**: [`CHANGELOG.md`](./CHANGELOG.md)
+> 📒 **Changelog**: [`CHANGELOG.md`](./CHANGELOG.md) ·
+> 🗺️ **Roadmap**: [`ROADMAP.md`](./ROADMAP.md)
 
 ---
 
