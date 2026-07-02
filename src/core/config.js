@@ -68,8 +68,10 @@ export const CACHE_DIR = '.cache';
 /** Cache TTL in hours. */
 export const CACHE_TTL_HOURS = 72;
 
-/** If true, the pipeline uses the GitHub Search API as a fallback when DDG returns empty/blocked. */
-export const GITHUB_API_DISCOVERY_FALLBACK = false;
+/** If true (or env GITHUB_API_DISCOVERY_FALLBACK=true), the pipeline uses the GitHub Search API
+ * as a fallback when DDG returns empty/blocked. Recommended over relying on DDG scraping alone
+ * (which is rate-limited/flaky). Pair with GITHUB_TOKEN for a higher rate limit. */
+export const GITHUB_API_DISCOVERY_FALLBACK = process.env.GITHUB_API_DISCOVERY_FALLBACK === 'true';
 
 // --- Multi-source inspiration layer (ROADMAP near-term) ---
 // Each source is a small module implementing searchX(intent, deps) -> Result[].
