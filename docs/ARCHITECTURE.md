@@ -17,7 +17,8 @@ flowchart TD
     ENRICH --> RANK[discovery / ranker.rankRepos<br/>top-N, tiered scoring]
     RANK --> ANALYZE[analysis / repoAnalyzer<br/>'Code Archaeologist' agent]
     ANALYZE --> CASCADE[analysis / cascadeOrchestrator<br/>modules + specialists, informed by repos]
-    CASCADE --> SYNTH[analysis / synthesizer<br/>final report]
+    CASCADE --> INSPIRATION[discovery / hnSearch·npmSearch·soSearch·paperSearch<br/>gatherInspiration, top-K per source]
+    INSPIRATION --> SYNTH[analysis / synthesizer<br/>final report + inspiration section]
     SYNTH --> WRITE[io / reportWriter<br/>projects/&lt;ts&gt;/ + root copy]
     WRITE --> Docs([Structured documents])
 
@@ -54,6 +55,7 @@ flowchart LR
         RE[repoEnricher]
         RK[ranker]
         GAF[githubApiFallback]
+        INSP[hnSearch·npmSearch·soSearch·paperSearch]
     end
     subgraph ANA[analysis]
         RA[repoAnalyzer]
@@ -79,6 +81,7 @@ flowchart LR
     DS --> SP
     DS --> CA
     RE --> CA
+    INSP --> CA
     IEX --> CLD
     RA --> CLD
     CO --> CLD
@@ -101,20 +104,23 @@ mocks -> testability without network and without mocking ESM.
 | `repoEnricher.enrichRepos` | `{ getPage?, cache? }` |
 | `repoAnalyzer.analyzeRepo` | `{ runClaude?, fetchIssues? }` |
 | `cascadeOrchestrator.runCascade` | `{ runClaude?, runClaudeJSONWithRetry? }` |
-| `synthesizer.synthesizeReport` | `{ runClaude? }` |
+| `discovery/hnSearch·npmSearch·soSearch·paperSearch` | `{ fetchImpl?, topK?, cache? }` (uniform source contract) |
+| `pipeline.gatherInspiration` | `{ hn?, npm?, so?, papers? }` (each: a source fn) |
+| `synthesizer.synthesizeReport` | `{ runClaude? }`, `inspiration = {}` |
 | `core/claude.runClaude` | `{ spawn? }` (injectable spawner) |
 
 ## 4. Output documents
 
 `projects/<TIMESTAMP>/`: `1_intent_decomposition.json`, `2_repo_candidates.json`,
 `3_repo_analysis_<n>_*.md`, `4_module_breakdown.json`, `5_module_analysis_<m>_*.md`,
-`final_report.md` (root copy in real mode only).
+`6_inspiration.json` (HN/npm/SO/papers), `final_report.md` (root copy in real mode only).
 
 ## 5. Validation strategy
 
 - `node --check` + **import-smoke** (`scripts/check.mjs`) on every module.
 - **Unit tests** (offline, with DI mocks): ranker, serpParser, duckSearch, repoEnricher, claude
-  (mock spawn), cache, errors, utils, reportWriter, resume.
+  (mock spawn), cache, errors, utils, reportWriter, resume, inspiration sources (hn/npm/so/paper)
+  + `formatInspiration` + `gatherInspiration`.
 - **Smoke e2e** (`dryRun`): whole pipeline with mocks.
 - **Real e2e** (manual): requires an authenticated `claude` CLI + DuckDuckGo + Chromium.
 - **Coverage**: 96.2% statements / 93.2% functions / 80.7% branch; the residual is real integration

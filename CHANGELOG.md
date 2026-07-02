@@ -3,6 +3,34 @@
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [3.2.0] - 2026-07-02 - Multi-source inspiration layer
+
+### Added
+- **Inspiration fan-out**: a software idea is now designed against multiple independent axes, not
+  just GitHub. Four new discovery sources implement a uniform `searchX(intent, deps) -> Result[]`
+  contract (`{ title, summary, url, source, meta? }`):
+  - `src/discovery/hnSearch.js` - Hacker News (Algolia API): practitioner discussions, primers, war stories.
+  - `src/discovery/npmSearch.js` - npm registry: composable packages and their popularity.
+  - `src/discovery/soSearch.js` - Stack Exchange API: cross-project pain points (optional `SO_API_KEY`).
+  - `src/discovery/paperSearch.js` - OpenAlex: academic prior art (polite pool via `mailto`, no key).
+- **`pipeline.gatherInspiration`**: parallel fan-out (`runPool`, top-K per source). Each source is
+  rate-limit-aware + cache-friendly and **fails non-fatal** (a blocked/empty source degrades to `[]`,
+  never blocking the pipeline).
+- **`synthesizer`**: new `## Inspiration from other sources` prompt section + report section
+  "What to Read, Reuse, and Avoid"; results persisted as `6_inspiration.json`.
+- `config`: `INSPIRATION_TOP_K` + HN/npm/StackOverflow/OpenAlex endpoints + `OPENALEX_MAILTO`.
+- Tests: new `tests/inspiration.test.js` (10 tests across the four sources, `formatInspiration`,
+  `gatherInspiration`).
+
+### Changed
+- `reportWriter`: shared `writeAnalyses` helper (DRY between repo and module docs) - keeps
+  `writeDocs` under the complexity threshold.
+- `testing/mocks`: added `mockHn`/`mockNpm`/`mockSo`/`mockPapers` so `dryRun` stays fully offline.
+
+### Notes
+- Academic source is **OpenAlex only** (Semantic Scholar kept as a deferred alternative). Google
+  Scholar remains an explicit non-goal (no API, CAPTCHA/bans, ToS) - see `ROADMAP.md`.
+
 ## [3.1.0] - 2026-07-01 - Grounded analyses + robust discovery
 
 ### Added

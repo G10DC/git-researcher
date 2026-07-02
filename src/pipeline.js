@@ -13,6 +13,10 @@ import { searchRepos } from './discovery/duckSearch.js';
 import { preRank, rankRepos } from './discovery/ranker.js';
 import { enrichRepos } from './discovery/repoEnricher.js';
 import { fetchOpenIssues } from './discovery/githubApiFallback.js';
+import { searchHn } from './discovery/hnSearch.js';
+import { searchNpm } from './discovery/npmSearch.js';
+import { searchSo } from './discovery/soSearch.js';
+import { searchPapers } from './discovery/paperSearch.js';
 import { analyzeRepo } from './analysis/repoAnalyzer.js';
 import { runCascade } from './analysis/cascadeOrchestrator.js';
 import { synthesizeReport } from './analysis/synthesizer.js';
@@ -45,19 +49,60 @@ export async function tryResume() {
 }
 
 /**
+ * Multi-source inspiration fan-out: queries independent sources (HN, npm, SO, papers)
+ * in parallel and collects top-K results per source. A failing source degrades to []
+ * (fail non-fatal), never blocking the pipeline.
+ * @param {Object} intent
+ * @param {{hn?:Function,npm?:Function,so?:Function,papers?:Function}} [deps]
+ * @returns {Promise<{hn:Array,npm:Array,so:Array,papers:Array}>}
+ */
+export async function gatherInspiration(intent, deps = {}) {
+  const sources = [
+    ['hn', deps.hn || searchHn],
+    ['npm', deps.npm || searchNpm],
+    ['so', deps.so || searchSo],
+    ['papers', deps.papers || searchPapers],
+  ];
+  const out = { hn: [], npm: [], so: [], papers: [] };
+  await runPool(
+    sources,
+    async ([key, fn]) => {
+      try {
+        out[key] = await fn(intent);
+      } catch (e) {
+        console.warn(`⚠️ Inspiration source '${key}' failed: ${e.message}`);
+        out[key] = [];
+      }
+    },
+    sources.length
+  );
+  return out;
+}
+
+/**
  * Builds the injected dependencies for each phase (mocks in dryRun, real otherwise).
  * Centralizes the `dry ? {...} : {}` ternaries to reduce runPipeline's complexity.
  * @param {boolean} dry
  * @param {Object|null} mocks
- * @returns {{intent:Object,search:Object,enrich:Object,claudeMd:Object,cascade:Object}}
+ * @returns {{intent:Object,search:Object,enrich:Object,claudeMd:Object,inspiration:Object,cascade:Object}}
  */
 function buildPhaseDeps(dry, mocks) {
-  if (!dry) return { intent: {}, search: {}, enrich: {}, claudeMd: { fetchIssues: fetchOpenIssues }, cascade: {} };
+  if (!dry) {
+    return {
+      intent: {},
+      search: {},
+      enrich: {},
+      claudeMd: { fetchIssues: fetchOpenIssues },
+      inspiration: {},
+      cascade: {},
+    };
+  }
   return {
     intent: { runClaudeJSONWithRetry: mocks.mockIntent },
     search: { fetchImpl: mocks.mockFetch, cache: NOOP_CACHE },
     enrich: { getPage: mocks.mockGetPage, cache: NOOP_CACHE },
     claudeMd: { runClaude: mocks.mockClaudeMd, fetchIssues: mocks.mockFetchIssues },
+    inspiration: { hn: mocks.mockHn, npm: mocks.mockNpm, so: mocks.mockSo, papers: mocks.mockPapers },
     cascade: { runClaude: mocks.mockClaudeMd, runClaudeJSONWithRetry: mocks.mockModules },
   };
 }
@@ -146,17 +191,21 @@ export async function runPipeline(idea, options = {}) {
   onProgress('Cascade: module breakdown + specialists...');
   const { modules, analyses: moduleAnalyses } = await runCascade(intent, repoAnalyses, deps.cascade);
 
+  // --- Phase 5.5: inspiration (multi-source fan-out: HN, npm, SO, papers) ---
+  onProgress('Gathering inspiration (HN, npm, Stack Overflow, papers)...');
+  const inspiration = await gatherInspiration(intent, deps.inspiration);
+
   // --- Phase 6: synthesis ---
   onProgress('Synthesizing the final report...');
-  const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd);
+  const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd, inspiration);
 
   // --- Phase 7: write documents (rootCopy only in real mode) ---
   onProgress('Writing documents...');
   const dir = createProjectDir();
-  writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, finalReport, rootCopy: !dry });
+  writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, finalReport, rootCopy: !dry });
 
   onProgress(`Done. Output in ${dir}`);
-  return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, finalReport };
+  return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, finalReport };
 }
 
 // --- main block: argv parsing (--idea/--dry-run/--resume) ---

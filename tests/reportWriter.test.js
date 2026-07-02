@@ -18,11 +18,13 @@ test('writeDocs writes all documents (rootCopy=false does not write to cwd)', ()
     repoAnalyses: [{ repo: 'a/b', role: 'R', analysis: 'txt' }],
     modules: [{ id: 1, name: 'M' }],
     moduleAnalyses: [{ module: 'M', role: 'R', analysis: 'txt' }],
+    inspiration: { hn: [{ title: 't', url: 'u', summary: 's', source: 'hn' }] },
     finalReport: '# Report',
     rootCopy: false,
   });
   assert.ok(fs.existsSync(path.join(dir, '1_intent_decomposition.json')));
   assert.ok(fs.existsSync(path.join(dir, '2_repo_candidates.json')));
+  assert.ok(fs.existsSync(path.join(dir, '6_inspiration.json')));
   assert.ok(fs.existsSync(path.join(dir, 'final_report.md')));
   assert.ok(fs.existsSync(path.join(dir, '3_repo_analysis_1_a_b.md')));
   assert.ok(fs.existsSync(path.join(dir, '5_module_analysis_1_m.md')));

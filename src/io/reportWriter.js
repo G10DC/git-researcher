@@ -35,18 +35,32 @@ function write(dir, name, content) {
 }
 
 /**
+ * Writes one numbered .md per analysis (shared shape for repo and module analyses).
+ * @param {string} dir
+ * @param {Array} analyses
+ * @param {string} filePrefix e.g. '3_repo_analysis'
+ * @param {(a:Object)=>string} makeName sanitized suffix (already passed through sanitize)
+ * @param {(a:Object)=>string} makeHeading full markdown body
+ */
+function writeAnalyses(dir, analyses, filePrefix, makeName, makeHeading) {
+  (analyses || []).forEach((a, i) => {
+    write(dir, `${filePrefix}_${i + 1}_${makeName(a)}.md`, makeHeading(a));
+  });
+}
+
+/**
  * Writes all the output documents.
  * @param {string} projectDir
  * @param {{
  *   intent?:Object, candidates?:Array, ranked?:Array, repoAnalyses?:Array,
- *   modules?:Array, moduleAnalyses?:Array, finalReport?:string, rootCopy?:boolean
+ *   modules?:Array, moduleAnalyses?:Array, inspiration?:Object, finalReport?:string, rootCopy?:boolean
  * }} payload
  * @returns {string} projectDir
  */
 export function writeDocs(projectDir, payload) {
   const {
     intent, candidates, ranked, repoAnalyses,
-    modules, moduleAnalyses, finalReport, rootCopy = true,
+    modules, moduleAnalyses, inspiration = {}, finalReport, rootCopy = true,
   } = payload;
 
   if (intent) write(projectDir, '1_intent_decomposition.json', intent);
@@ -57,25 +71,28 @@ export function writeDocs(projectDir, payload) {
     topN: ranked || [],
   });
 
-  (repoAnalyses || []).forEach((r, i) => {
-    const [owner, ...rest] = String(r.repo).split('/');
-    const repo = rest.join('_') || 'repo';
-    write(
-      projectDir,
-      `3_repo_analysis_${i + 1}_${sanitize(owner)}_${sanitize(repo)}.md`,
-      `# Analysis: ${r.repo}\n**Agent role:** ${r.role}\n\n${r.analysis}`
-    );
-  });
+  writeAnalyses(
+    projectDir,
+    repoAnalyses,
+    '3_repo_analysis',
+    (r) => {
+      const [owner, ...rest] = String(r.repo).split('/');
+      return `${sanitize(owner)}_${sanitize(rest.join('_') || 'repo')}`;
+    },
+    (r) => `# Analysis: ${r.repo}\n**Agent role:** ${r.role}\n\n${r.analysis}`
+  );
 
   write(projectDir, '4_module_breakdown.json', modules || []);
 
-  (moduleAnalyses || []).forEach((m, i) => {
-    write(
-      projectDir,
-      `5_module_analysis_${i + 1}_${sanitize(m.module)}.md`,
-      `# Module: ${m.module}\n**Agent role:** ${m.role}\n\n${m.analysis}`
-    );
-  });
+  writeAnalyses(
+    projectDir,
+    moduleAnalyses,
+    '5_module_analysis',
+    (m) => sanitize(m.module),
+    (m) => `# Module: ${m.module}\n**Agent role:** ${m.role}\n\n${m.analysis}`
+  );
+
+  write(projectDir, '6_inspiration.json', inspiration);
 
   write(projectDir, 'final_report.md', finalReport || '');
   if (rootCopy) {

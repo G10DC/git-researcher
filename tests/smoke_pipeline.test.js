@@ -21,6 +21,7 @@ test('runPipeline dryRun generates all structured documents', async () => {
     '1_intent_decomposition.json',
     '2_repo_candidates.json',
     '4_module_breakdown.json',
+    '6_inspiration.json',
     'final_report.md',
   ];
   for (const f of expectedFiles) {

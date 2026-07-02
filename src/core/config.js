@@ -69,3 +69,25 @@ export const CACHE_TTL_HOURS = 72;
 
 /** If true, the pipeline uses the GitHub Search API as a fallback when DDG returns empty/blocked. */
 export const GITHUB_API_DISCOVERY_FALLBACK = false;
+
+// --- Multi-source inspiration layer (ROADMAP near-term) ---
+// Each source is a small module implementing searchX(intent, deps) -> Result[].
+// Result: { title, summary, url, source, meta? }.
+
+/** Top-K inspiration results kept per source (HN / npm / SO / papers). */
+export const INSPIRATION_TOP_K = 5;
+
+/** Algolia Hacker News search endpoint (stories, free, no key). */
+export const HN_ENDPOINT = 'https://hn.algolia.com/api/v1/search';
+
+/** npm registry search endpoint (free, no key). */
+export const NPM_ENDPOINT = 'https://registry.npmjs.org/-/v1/search';
+
+/** Stack Exchange advanced search endpoint (site=stackoverflow; optional SO_API_KEY raises the quota). */
+export const STACKOVERFLOW_ENDPOINT = 'https://api.stackexchange.com/2.3/search/advanced';
+
+/** OpenAlex works search endpoint (academic, polite pool via mailto, no key). */
+export const OPENALEX_ENDPOINT = 'https://api.openalex.org/works';
+
+/** mailto for the OpenAlex polite pool. Override for a project-specific address. */
+export const OPENALEX_MAILTO = 'gitresearcher@example.com';

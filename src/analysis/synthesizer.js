@@ -1,17 +1,44 @@
 // src/analysis/synthesizer.js
-// Final report: merges the repo analyses (state of the art) and module analyses (architecture).
-// Output in English. Anti-injection.
+// Final report: merges the repo analyses (state of the art), module analyses (architecture),
+// and multi-source inspiration (HN, npm, SO, papers). Output in English. Anti-injection.
 
 import { runClaude as defaultRun } from '../core/claude.js';
+
+const SOURCE_LABELS = {
+  hn: 'Hacker News (community discussions)',
+  npm: 'npm (composable packages)',
+  so: 'Stack Overflow (cross-project pain points)',
+  papers: 'Academic papers (prior art, OpenAlex)',
+};
+
+/**
+ * Formats the inspiration fan-out into a compact markdown block (one subsection per source).
+ * Empty sources are omitted. Pure function (unit-tested directly).
+ * @param {Object} [inspiration] { hn?:Array, npm?:Array, so?:Array, papers?:Array }
+ * @returns {string}
+ */
+export function formatInspiration(inspiration = {}) {
+  const sections = [];
+  for (const [key, label] of Object.entries(SOURCE_LABELS)) {
+    const items = (inspiration && inspiration[key]) || [];
+    if (items.length === 0) continue;
+    const bullets = items
+      .map((it) => `- [${it.title || '(untitled)'}](${it.url || ''})${it.summary ? ` — ${it.summary}` : ''}`)
+      .join('\n');
+    sections.push(`### ${label}\n${bullets}`);
+  }
+  return sections.join('\n\n');
+}
 
 /**
  * @param {Object} intent
  * @param {Array<{repo:string,role:string,analysis:string}>} repoAnalyses
  * @param {Array<{module:string,role:string,analysis:string}>} moduleAnalyses
  * @param {{runClaude?:Function}} [deps]
+ * @param {Object} [inspiration] { hn, npm, so, papers }
  * @returns {Promise<string>} markdown
  */
-export async function synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps = {}) {
+export async function synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps = {}, inspiration = {}) {
   const run = deps.runClaude || defaultRun;
 
   const repoText = (repoAnalyses || [])
@@ -21,6 +48,8 @@ export async function synthesizeReport(intent, repoAnalyses, moduleAnalyses, dep
   const modText = (moduleAnalyses || [])
     .map((m) => `### Module: ${m.module} (analyzed by: ${m.role})\n${m.analysis}`)
     .join('\n\n');
+
+  const inspText = formatInspiration(inspiration);
 
   const systemPrompt =
     'You are a Senior Solutions Architect and Product Manager skilled at synthesizing complex ' +
@@ -38,14 +67,18 @@ ${repoText || '(no repository analyzed)'}
 ## Module analyses (proposed architecture)
 ${modText || '(no module analyzed)'}
 
+## Inspiration from other sources
+${inspText || '(no external source gathered)'}
+
 Generate a structured final report with these sections:
 1. # Introduction and Global Architectural Analysis
 2. # State of the Art (synthesis of the relevant repos found)
 3. # Overall Strengths
 4. # Critical Points, Vulnerabilities and Bottlenecks
 5. # Developments and Optimization Opportunities
-6. # Implementation Roadmap and Action Plan (ordered by priority)
-7. # Conclusions and Strategic Recommendations`;
+6. # What to Read, Reuse, and Avoid (draw from the inspiration sources: discussions to read, packages to build on, common pitfalls, relevant research)
+7. # Implementation Roadmap and Action Plan (ordered by priority)
+8. # Conclusions and Strategic Recommendations`;
 
   return run(prompt, systemPrompt);
 }

@@ -18,7 +18,8 @@ modules + specialists), with each informing the other.
 
 ```
 idea → [breakdown] → [DuckDuckGo+dorks] → [pre-rank] → [GitHub enrichment]
-     → [top-N ranking] → [per-repo analysis] → [module+specialist cascade] → [synthesis] → documents
+     → [top-N ranking] → [per-repo analysis] → [module+specialist cascade]
+     → [inspiration: HN · npm · Stack Overflow · papers] → [synthesis] → documents
 ```
 
 Each phase is isolated (non-fatal failure → saves partials and continues). `dryRun` injects DI mocks
@@ -49,7 +50,7 @@ npm install -D   # dev tools (eslint) - optional, required by CI/lint
 ```bash
 npm start        # real: asks for an idea, uses Claude CLI + DuckDuckGo + puppeteer
 npm run dry      # offline smoke (mocks, no Claude/network)
-npm test         # test suite (72 tests, offline)
+npm test         # test suite (89 tests, offline)
 npm run coverage # coverage report
 npm run lint     # eslint (requires devDependencies)
 ```
@@ -68,7 +69,7 @@ Output goes to `projects/<TIMESTAMP>/` plus a copy of the final report in `archi
 
 `projects/<TIMESTAMP>/`: `1_intent_decomposition.json`, `2_repo_candidates.json` (with
 `score`/`scoreBreakdown`), `3_repo_analysis_<n>_<owner>_<repo>.md`, `4_module_breakdown.json`,
-`5_module_analysis_<m>_<name>.md`, `final_report.md`.
+`5_module_analysis_<m>_<name>.md`, `6_inspiration.json` (HN/npm/SO/papers), `final_report.md`.
 
 ---
 
@@ -77,12 +78,12 @@ Output goes to `projects/<TIMESTAMP>/` plus a copy of the final report in `archi
 ```
 src/
 ├── core/         config · utils(withRetry·runPool) · errors(ClaudeError…) · claude(CLI wrapper, injectable spawn)
-├── discovery/    intentExtractor · serpParser(pure) · duckSearch · repoEnricher · ranker · githubApiFallback
+├── discovery/    intentExtractor · serpParser(pure) · duckSearch · repoEnricher · ranker · githubApiFallback · hnSearch · npmSearch · soSearch · paperSearch
 ├── analysis/     repoAnalyzer · cascadeOrchestrator · synthesizer
 ├── io/           reportWriter · cache
 ├── testing/      mocks(dryRun)
 └── pipeline.js   orchestrator (slim) + resume + main block
-scripts/check.mjs import-smoke · tests/ (13 files) · .github/workflows/ci.yml
+scripts/check.mjs import-smoke · tests/ (14 files) · .github/workflows/ci.yml
 ```
 
 Dependencies point downward: `entry → pipeline → {core, discovery, analysis, io, testing}`. No cycles
@@ -93,14 +94,16 @@ Dependencies point downward: `entry → pipeline → {core, discovery, analysis,
 ## ⚙️ Configuration
 
 Everything in [`src/core/config.js`](./src/core/config.js): `TOP_N_REPOS`, `MAX_CANDIDATES`, `MAX_KEYWORDS`,
-`POOL_SIZE`, `GITHUB_API_DISCOVERY_FALLBACK` (opt-in). **Optional features**: on-disk cache (`.cache/`, TTL),
-`--resume`, GitHub Search API fallback (token via `GITHUB_TOKEN`).
+`POOL_SIZE`, `GITHUB_API_DISCOVERY_FALLBACK` (opt-in), `INSPIRATION_TOP_K` (top-K per inspiration source) +
+the HN/npm/StackOverflow/OpenAlex endpoints. **Optional features**: on-disk cache (`.cache/`, TTL),
+`--resume`, GitHub Search API fallback (token via `GITHUB_TOKEN`), Stack Exchange quota raise
+(`SO_API_KEY`).
 
 ---
 
 ## 🧪 Quality
 
-- **72 tests** offline (unit + smoke e2e in `dryRun`).
+- **89 tests** offline (unit + smoke e2e in `dryRun`).
 - **Coverage**: 96.2% statements · 93.2% functions · 80.7% branch (residual = real integration code:
   CLI spawn, puppeteer browser launch, real discovery).
 - **CI** ([`.github/workflows/ci.yml`](./.github/workflows/ci.yml)): lint + test + coverage + smoke on Node 20/22.

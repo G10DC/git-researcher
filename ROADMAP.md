@@ -22,17 +22,27 @@ Each axis answers a different question:
 |---|---|---|---|
 | Code | GitHub repos | "What implementations already exist?" | ✅ shipped |
 | Project pain | GitHub open issues | "What breaks / frustrates their users?" | ✅ 3.1.0 |
-| Composable packages | npm registry | "What libraries can I build on?" | 🔜 near-term |
-| Community wisdom | Hacker News (Algolia) | "What do practitioners read & debate?" | 🔜 near-term |
-| Cross-project pain | Stack Overflow | "Where do people get stuck, broadly?" | 🔜 near-term |
-| Theory / prior art | OpenAlex / Semantic Scholar | "What does the research say?" | 🔜 near-term |
+| Composable packages | npm registry | "What libraries can I build on?" | ✅ 3.2.0 |
+| Community wisdom | Hacker News (Algolia) | "What do practitioners read & debate?" | ✅ 3.2.0 |
+| Cross-project pain | Stack Overflow | "Where do people get stuck, broadly?" | ✅ 3.2.0 |
+| Theory / prior art | OpenAlex | "What does the research say?" | ✅ 3.2.0 |
 | ML models/datasets | Hugging Face | "What models/datasets already exist?" | 🧪 conditional |
 
 ---
 
-## 2. Shipped (3.1.0)
+## 2. Shipped
 
+### 3.2.0 - Multi-source inspiration layer
 See [`CHANGELOG.md`](./CHANGELOG.md). Highlights:
+- Uniform `searchX(intent, deps) -> Result[]` source contract; four sources shipped: Hacker News
+  (Algolia), npm registry, Stack Exchange, OpenAlex (papers).
+- `pipeline.gatherInspiration`: parallel fan-out (`runPool`), top-K per source, fail-non-fatal
+  (a blocked source degrades to `[]`, never blocks the pipeline).
+- `synthesizer`: new `## Inspiration from other sources` prompt section + report section
+  "What to Read, Reuse, and Avoid"; persisted as `6_inspiration.json`.
+
+### 3.1.0 - Grounded analyses + robust discovery
+Highlights:
 - `openIssues` extracted during enrichment; the most discussed open issues are injected into the
   per-repo analysis as real user pain points.
 - Low-signal guard + system prompt forbidding tool/permission requests (fixes degenerate analyses
@@ -43,7 +53,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md). Highlights:
 
 ---
 
-## 3. Near-term - the multi-source inspiration layer
+## 3. ✅ Done (3.2.0) - the multi-source inspiration layer
 
 ### 3.1 Uniform "source" contract
 Every source is a small module in `src/discovery/` implementing the same shape, so they are
@@ -97,7 +107,7 @@ restructuring the existing phases.
 
 ---
 
-## 4. Medium-term
+## 4. Near-term
 
 - **Domain-aware source selection**: tag the intent (ML / UI / CLI / data) and enable only the
   relevant sources (e.g. Hugging Face + Papers for ML; Dribbble for UI).

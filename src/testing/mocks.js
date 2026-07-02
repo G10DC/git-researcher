@@ -1,5 +1,5 @@
 // src/testing/mocks.js
-// DI mocks for dryRun: no real calls to Claude/DuckDuckGo/GitHub.
+// DI mocks for dryRun: no real calls to Claude/DuckDuckGo/GitHub/inspiration sources.
 // Extracted from the pipeline to keep the orchestrator slim and reuse mocks in tests.
 
 /**
@@ -7,7 +7,8 @@
  * @param {string} idea
  * @returns {{
  *   mockIntent:Function, mockModules:Function, mockClaudeMd:Function,
- *   mockFetch:Function, mockGetPage:Function, mockFetchIssues:Function
+ *   mockFetch:Function, mockGetPage:Function, mockFetchIssues:Function,
+ *   mockHn:Function, mockNpm:Function, mockSo:Function, mockPapers:Function
  * }}
  */
 export function createDryRunMocks(idea) {
@@ -68,5 +69,18 @@ export function createDryRunMocks(idea) {
     { title: 'Add disk-based index option', body: '' },
   ];
 
-  return { mockIntent, mockModules, mockClaudeMd, mockFetch, mockGetPage, mockFetchIssues };
+  const mockHn = async () => [
+    { title: 'Show HN: a vector database (dryRun)', summary: '120 points · 45 comments', url: 'https://news.ycombinator.com/item?id=1', source: 'hn', meta: { points: 120, comments: 45 } },
+  ];
+  const mockNpm = async () => [
+    { title: 'demo-vecdb', summary: 'Fictional package (dryRun)', url: 'https://www.npmjs.com/package/demo-vecdb', source: 'npm', meta: { version: '1.0.0', score: 0.9 } },
+  ];
+  const mockSo = async () => [
+    { title: 'How to shard a vector index? (dryRun)', summary: '30 votes · 2 answers', url: 'https://stackoverflow.com/q/1', source: 'so', meta: { score: 30, answers: 2, tags: ['vector', 'index'] } },
+  ];
+  const mockPapers = async () => [
+    { title: 'ANN with HNSW (dryRun)', summary: '2020 · 512 citations', url: 'https://doi.org/10.0000/x', source: 'paper', meta: { year: 2020, citations: 512, venue: 'arXiv' } },
+  ];
+
+  return { mockIntent, mockModules, mockClaudeMd, mockFetch, mockGetPage, mockFetchIssues, mockHn, mockNpm, mockSo, mockPapers };
 }
