@@ -57,13 +57,14 @@ test('parseSerp decodes uddg and extracts title+snippet from a synthetic SERP', 
   assert.equal(res[1].fullName, 'weaviate/weaviate');
 });
 
-test('buildQueries builds single-keyword queries, MAX_KEYWORDS cap, no AND-grouping', () => {
+test('buildQueries builds single-keyword queries {q,kw}, MAX_KEYWORDS cap, no AND-grouping', () => {
   const intent = { keywords: ['vector database', 'rust', 'hnsw', 'a', 'b', 'c', 'd'], technologies: ['tokio'] };
   const q = buildQueries(intent);
   assert.ok(q.length <= 6, 'respects the MAX_KEYWORDS budget');
-  assert.equal(q[0], 'site:github.com vector database');
+  assert.equal(q[0].q, 'site:github.com vector database');
+  assert.equal(q[0].kw, 'vector database');
   // each query contains at most one user keyword (phrase), not an AND of distinct keywords
-  q.forEach((query) => assert.ok(query.startsWith('site:github.com ')));
+  q.forEach((e) => assert.ok(e.q.startsWith('site:github.com ')));
 });
 
 test('parseSerp on a CAPTURED REAL SERP (skip if fixture missing)', { skip: !fs.existsSync(path.resolve('tests/fixtures/ddg_site_github.html')) }, () => {
@@ -84,12 +85,23 @@ test('searchRepos end-to-end with mock fetchImpl (POST -> decode uddg -> dedup)'
   assert.equal(res.length, 1, 'dedup by fullName + github filter');
   assert.equal(res[0].fullName, 'a/b');
   assert.match(res[0].snippet, /vector/i);
+  assert.deepEqual(res[0].matchedKeywords, ['vector database'], 'candidate tagged with its keyword');
 });
 
 test('searchRepos: empty SERP does not block the flow', async () => {
   const fetchImpl = async () => ({ ok: true, text: async () => '<html><body>no results</body></html>' });
   const res = await searchRepos({ keywords: ['vector database'] }, { fetchImpl, cache: NOOP_CACHE });
   assert.deepEqual(res, []);
+});
+
+test('searchRepos accumulates matchedKeywords when the same repo surfaces from multiple queries', async () => {
+  const html = `<html><body>
+    <div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgithub.com%2Fa%2Fb">a/b</a><a class="result__snippet">vector</a></div>
+  </body></html>`;
+  const fetchImpl = async () => ({ ok: true, text: async () => html });
+  const res = await searchRepos({ keywords: ['vector', 'database'] }, { fetchImpl, cache: NOOP_CACHE });
+  assert.equal(res.length, 1, 'deduped');
+  assert.deepEqual(res[0].matchedKeywords, ['vector', 'database'], 'both keywords accumulated');
 });
 
 test('searchRepos: falls back to the /lite/ endpoint if /html/ always fails', async () => {

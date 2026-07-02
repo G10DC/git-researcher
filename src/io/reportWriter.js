@@ -39,7 +39,7 @@ function write(dir, name, content) {
  * @param {string} dir
  * @param {Array} analyses
  * @param {string} filePrefix e.g. '3_repo_analysis'
- * @param {(a:Object)=>string} makeName sanitized suffix (already passed through sanitize)
+ * @param {(a:Object)=>string} makeName sanitized suffix
  * @param {(a:Object)=>string} makeHeading full markdown body
  */
 function writeAnalyses(dir, analyses, filePrefix, makeName, makeHeading) {
@@ -53,14 +53,15 @@ function writeAnalyses(dir, analyses, filePrefix, makeName, makeHeading) {
  * @param {string} projectDir
  * @param {{
  *   intent?:Object, candidates?:Array, ranked?:Array, repoAnalyses?:Array,
- *   modules?:Array, moduleAnalyses?:Array, inspiration?:Object, finalReport?:string, rootCopy?:boolean
+ *   modules?:Array, moduleAnalyses?:Array, inspiration?:Object, criticalReview?:string,
+ *   finalReport?:string, rootCopy?:boolean
  * }} payload
  * @returns {string} projectDir
  */
 export function writeDocs(projectDir, payload) {
   const {
     intent, candidates, ranked, repoAnalyses,
-    modules, moduleAnalyses, inspiration = {}, finalReport, rootCopy = true,
+    modules, moduleAnalyses, inspiration = {}, criticalReview = '', finalReport, rootCopy = true,
   } = payload;
 
   if (intent) write(projectDir, '1_intent_decomposition.json', intent);
@@ -71,15 +72,16 @@ export function writeDocs(projectDir, payload) {
     topN: ranked || [],
   });
 
+  // role is part of the filename so multiple lenses on the same repo don't collide
   writeAnalyses(
     projectDir,
     repoAnalyses,
     '3_repo_analysis',
     (r) => {
       const [owner, ...rest] = String(r.repo).split('/');
-      return `${sanitize(owner)}_${sanitize(rest.join('_') || 'repo')}`;
+      return `${sanitize(owner)}_${sanitize(rest.join('_') || 'repo')}_${sanitize(r.role || 'analysis')}`;
     },
-    (r) => `# Analysis: ${r.repo}\n**Agent role:** ${r.role}\n\n${r.analysis}`
+    (r) => `# Analysis: ${r.repo} (${r.role || 'analysis'})\n\n${r.analysis}`
   );
 
   write(projectDir, '4_module_breakdown.json', modules || []);
@@ -93,6 +95,7 @@ export function writeDocs(projectDir, payload) {
   );
 
   write(projectDir, '6_inspiration.json', inspiration);
+  write(projectDir, '7_critical_review.md', criticalReview);
 
   write(projectDir, 'final_report.md', finalReport || '');
   if (rootCopy) {

@@ -32,6 +32,14 @@ Each axis answers a different question:
 
 ## 2. Shipped
 
+### 3.3.0 - Per-keyword discovery + multi-perspective agents
+See [`CHANGELOG.md`](./CHANGELOG.md). Highlights:
+- Per-keyword repo selection (`takePerKeyword`): every searched keyword is represented, not just
+  the globally-top repos. Candidates carry `matchedKeywords` end to end.
+- Second analysis lens per repo (Security & Reliability Auditor beside the Code Archaeologist).
+- Adversarial review (`adversarialReview.js`): a devil's-advocate pass challenges high-impact
+  claims before synthesis -> promotes "Progressive verification" from medium-term to shipped.
+
 ### 3.2.0 - Multi-source inspiration layer
 See [`CHANGELOG.md`](./CHANGELOG.md). Highlights:
 - Uniform `searchX(intent, deps) -> Result[]` source contract; four sources shipped: Hacker News
@@ -114,8 +122,8 @@ restructuring the existing phases.
 - **Richer repo signal**: fetch the dependency manifest (`package.json` / `go.mod` / `Cargo.toml`
   via `raw.githubusercontent.com`) and a light file-tree/language breakdown, to ground analyses
   further and reduce hallucination (deferred from 3.1.0 for leanness).
-- **Progressive verification**: a light adversarial check on high-impact claims in the synthesis,
-  reusing the existing `runClaudeJSONWithRetry` path (no heavyweight multi-agent panel).
+- **Progressive verification**: ✅ shipped (3.3.0) - a single-agent adversarial review
+  (`adversarialReview.js`) challenges high-impact claims before synthesis.
 - **Selective caching of analysis outputs**: optional, for reproducible re-runs.
 
 ---

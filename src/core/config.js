@@ -91,3 +91,12 @@ export const OPENALEX_ENDPOINT = 'https://api.openalex.org/works';
 
 /** mailto for the OpenAlex polite pool. Override for a project-specific address. */
 export const OPENALEX_MAILTO = 'gitresearcher@example.com';
+
+// --- Per-keyword discovery coverage ---
+// Discovery now guarantees representation of every searched keyword, not just the globally-top repos.
+
+/** Repos selected PER keyword in the final ranking (coverage over raw popularity). */
+export const PER_KEYWORD = 2;
+
+/** Candidates enriched per keyword (broad pool so the per-keyword ranker has material). */
+export const ENRICH_PER_KEYWORD = 5;

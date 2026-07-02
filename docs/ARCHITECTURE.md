@@ -15,10 +15,11 @@ flowchart TD
     FALLBACK --> PRERANK
     PRERANK --> ENRICH[discovery / repoEnricher<br/>puppeteer/cheerio on GitHub]
     ENRICH --> RANK[discovery / ranker.rankRepos<br/>top-N, tiered scoring]
-    RANK --> ANALYZE[analysis / repoAnalyzer<br/>'Code Archaeologist' agent]
+    RANK --> ANALYZE[analysis / repoAnalyzer<br/>Code Archaeologist + Auditor, 2 lenses/repo]
     ANALYZE --> CASCADE[analysis / cascadeOrchestrator<br/>modules + specialists, informed by repos]
     CASCADE --> INSPIRATION[discovery / hnSearch·npmSearch·soSearch·paperSearch<br/>gatherInspiration, top-K per source]
-    INSPIRATION --> SYNTH[analysis / synthesizer<br/>final report + inspiration section]
+    INSPIRATION --> REVIEW[analysis / adversarialReview<br/>devil's advocate on high-impact claims]
+    REVIEW --> SYNTH[analysis / synthesizer<br/>final report + inspiration + critical review]
     SYNTH --> WRITE[io / reportWriter<br/>projects/&lt;ts&gt;/ + root copy]
     WRITE --> Docs([Structured documents])
 
@@ -58,8 +59,9 @@ flowchart LR
         INSP[hnSearch·npmSearch·soSearch·paperSearch]
     end
     subgraph ANA[analysis]
-        RA[repoAnalyzer]
+        RA[repoAnalyzer<br/>2 lenses]
         CO[cascadeOrchestrator]
+        ADV[adversarialReview]
         SY[synthesizer]
     end
     subgraph IO[io]
@@ -85,6 +87,7 @@ flowchart LR
     IEX --> CLD
     RA --> CLD
     CO --> CLD
+    ADV --> CLD
     SY --> CLD
     CLD --> ERR
 ```
@@ -103,17 +106,21 @@ mocks -> testability without network and without mocking ESM.
 | `duckSearch.searchRepos` | `{ fetchImpl?, parseResults?, cache? }` |
 | `repoEnricher.enrichRepos` | `{ getPage?, cache? }` |
 | `repoAnalyzer.analyzeRepo` | `{ runClaude?, fetchIssues? }` |
+| `repoAnalyzer.analyzeRepoWithCritique` | `{ runClaude?, fetchIssues? }` (two parallel lenses) |
 | `cascadeOrchestrator.runCascade` | `{ runClaude?, runClaudeJSONWithRetry? }` |
 | `discovery/hnSearch·npmSearch·soSearch·paperSearch` | `{ fetchImpl?, topK?, cache? }` (uniform source contract) |
 | `pipeline.gatherInspiration` | `{ hn?, npm?, so?, papers? }` (each: a source fn) |
-| `synthesizer.synthesizeReport` | `{ runClaude? }`, `inspiration = {}` |
+| `adversarialReview.runAdversarialReview` | `{ runClaude? }` |
+| `synthesizer.synthesizeReport` | `{ runClaude? }`, `inspiration = {}`, `criticalReview = ''` |
+| `discovery/ranker.takePerKeyword` | PURE (no deps) - per-keyword coverage |
 | `core/claude.runClaude` | `{ spawn? }` (injectable spawner) |
 
 ## 4. Output documents
 
 `projects/<TIMESTAMP>/`: `1_intent_decomposition.json`, `2_repo_candidates.json`,
-`3_repo_analysis_<n>_*.md`, `4_module_breakdown.json`, `5_module_analysis_<m>_*.md`,
-`6_inspiration.json` (HN/npm/SO/papers), `final_report.md` (root copy in real mode only).
+`3_repo_analysis_<n>_*_<role>.md` (one per lens), `4_module_breakdown.json`, `5_module_analysis_<m>_*.md`,
+`6_inspiration.json` (HN/npm/SO/papers), `7_critical_review.md` (adversarial), `final_report.md`
+(root copy in real mode only).
 
 ## 5. Validation strategy
 

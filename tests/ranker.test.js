@@ -4,8 +4,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { preRank, rankRepos } from '../src/discovery/ranker.js';
-import { TOP_N_REPOS } from '../src/core/config.js';
+import { preRank, rankRepos, takePerKeyword } from '../src/discovery/ranker.js';
+import { TOP_N_REPOS, PER_KEYWORD } from '../src/core/config.js';
 
 const intent = { keywords: ['vector', 'database', 'rust'] };
 
@@ -70,4 +70,30 @@ test('preRank orders by match on fullName+title+snippet (not only fullName)', ()
   assert.equal(ordered[ordered.length - 1].fullName, 'random/thing');
   // qdrant matches in the snippet despite the generic name -> not pushed to the bottom
   assert.notEqual(ordered[0].fullName, 'random/thing');
+});
+
+test('takePerKeyword selects up to perKeyword per keyword with dedup', () => {
+  const items = [
+    { fullName: 'a/1', matchedKeywords: ['vector', 'database'] },
+    { fullName: 'a/2', matchedKeywords: ['vector', 'database'] },
+    { fullName: 'a/3', matchedKeywords: ['vector', 'database'] },
+    { fullName: 'a/4', matchedKeywords: ['cli'] },
+  ];
+  const sel = takePerKeyword(items, ['vector', 'database', 'cli'], 2);
+  // 'vector' -> a/1,a/2 ; 'database' -> a/3 (a/1,a/2 already in) ; 'cli' -> a/4
+  assert.equal(sel.length, 4);
+  assert.ok(sel.some((r) => r.fullName === 'a/4'), 'cli-only item is represented');
+});
+
+test('rankRepos guarantees per-keyword coverage (a low-star repo for a minority keyword is kept)', () => {
+  const recent = new Date(Date.now() - 10 * 86400000).toISOString();
+  const enriched = [
+    { fullName: 'pop/a', description: 'vector database rust', matchedKeywords: ['vector', 'database', 'rust'], stars: 99999, lastUpdated: recent },
+    { fullName: 'pop/b', description: 'vector database rust', matchedKeywords: ['vector', 'database', 'rust'], stars: 88888, lastUpdated: recent },
+    { fullName: 'pop/c', description: 'vector database rust', matchedKeywords: ['vector', 'database', 'rust'], stars: 77777, lastUpdated: recent },
+    { fullName: 'cli/x', description: 'a cli', matchedKeywords: ['cli'], stars: 5, lastUpdated: recent },
+  ];
+  const ranked = rankRepos(enriched, { keywords: ['vector', 'database', 'rust', 'cli'] });
+  assert.ok(ranked.some((r) => r.fullName === 'cli/x'), 'cli/x selected despite low stars (per-keyword coverage)');
+  assert.ok(ranked.length <= TOP_N_REPOS + PER_KEYWORD, 'bounded by TOP_N_REPOS + PER_KEYWORD headroom');
 });

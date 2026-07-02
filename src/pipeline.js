@@ -10,15 +10,16 @@ import { runPool } from './core/utils.js';
 import { NOOP_CACHE } from './io/cache.js';
 import { extractIntent } from './discovery/intentExtractor.js';
 import { searchRepos } from './discovery/duckSearch.js';
-import { preRank, rankRepos } from './discovery/ranker.js';
+import { preRank, rankRepos, takePerKeyword } from './discovery/ranker.js';
 import { enrichRepos } from './discovery/repoEnricher.js';
 import { fetchOpenIssues } from './discovery/githubApiFallback.js';
 import { searchHn } from './discovery/hnSearch.js';
 import { searchNpm } from './discovery/npmSearch.js';
 import { searchSo } from './discovery/soSearch.js';
 import { searchPapers } from './discovery/paperSearch.js';
-import { analyzeRepo } from './analysis/repoAnalyzer.js';
+import { analyzeRepoWithCritique } from './analysis/repoAnalyzer.js';
 import { runCascade } from './analysis/cascadeOrchestrator.js';
+import { runAdversarialReview } from './analysis/adversarialReview.js';
 import { synthesizeReport } from './analysis/synthesizer.js';
 import { createProjectDir, writeDocs } from './io/reportWriter.js';
 import { createDryRunMocks } from './testing/mocks.js';
@@ -81,7 +82,6 @@ export async function gatherInspiration(intent, deps = {}) {
 
 /**
  * Builds the injected dependencies for each phase (mocks in dryRun, real otherwise).
- * Centralizes the `dry ? {...} : {}` ternaries to reduce runPipeline's complexity.
  * @param {boolean} dry
  * @param {Object|null} mocks
  * @returns {{intent:Object,search:Object,enrich:Object,claudeMd:Object,inspiration:Object,cascade:Object}}
@@ -130,7 +130,7 @@ async function applyApiFallback(intent, candidates, dry, onProgress) {
 }
 
 /**
- * Phases 2-3: discovery (DDG + optional API fallback) -> preRank -> enrich -> rank.
+ * Phases 2-3: discovery (DDG + optional API fallback) -> per-keyword pre-rank -> enrich -> per-keyword rank.
  * @param {Object} intent
  * @param {boolean} dry
  * @param {Object} deps
@@ -142,12 +142,21 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
   const candidates = await searchRepos(intent, deps.search);
   await applyApiFallback(intent, candidates, dry, onProgress);
 
-  onProgress(`Pre-ranking ${candidates.length} candidates...`);
-  const toEnrich = preRank(candidates, intent).slice(0, config.MAX_CANDIDATES);
+  onProgress(`Pre-ranking ${candidates.length} candidates (per-keyword)...`);
+  const preRanked = preRank(candidates, intent);
+  // Broaden coverage at the enrichment stage: up to ENRICH_PER_KEYWORD per keyword...
+  const toEnrich = takePerKeyword(preRanked, intent.keywords || [], config.ENRICH_PER_KEYWORD);
+  // ...then top up to MAX_CANDIDATES with the best remaining (safety net for empty-keyword SERPs).
+  const seen = new Set(toEnrich.map((c) => c.fullName));
+  for (const c of preRanked) {
+    if (toEnrich.length >= config.MAX_CANDIDATES) break;
+    if (!seen.has(c.fullName)) { toEnrich.push(c); seen.add(c.fullName); }
+  }
+
   onProgress(`Enriching ${toEnrich.length} candidates...`);
   const enriched = await enrichRepos(toEnrich, deps.enrich);
   const ranked = rankRepos(enriched, intent);
-  onProgress(`Top-${ranked.length} repos selected.`);
+  onProgress(`Top-${ranked.length} repos selected (per-keyword coverage).`);
   return { candidates, ranked };
 }
 
@@ -175,19 +184,19 @@ export async function runPipeline(idea, options = {}) {
     // --- Phase 1: intent ---
     onProgress('Breaking down the idea...');
     intent = await extractIntent(idea, deps.intent);
-    // --- Phases 2-3: discovery + rank ---
+    // --- Phases 2-3: discovery + rank (per-keyword coverage) ---
     ({ candidates, ranked } = await discoverAndRank(intent, dry, deps, onProgress));
   }
 
-  // --- Phase 4: per-repo analysis (pool) ---
-  onProgress('Per-repo analysis (specialist agents)...');
-  const repoAnalyses = await runPool(
+  // --- Phase 4: per-repo analysis, two lenses each (Archaeologist + Auditor) ---
+  onProgress('Per-repo analysis (Archaeologist + Auditor)...');
+  const repoAnalyses = (await runPool(
     ranked,
-    (repo) => analyzeRepo(repo, intent, deps.claudeMd),
+    (repo) => analyzeRepoWithCritique(repo, intent, deps.claudeMd),
     config.POOL_SIZE
-  );
+  )).flat();
 
-  // --- Phase 5: cascade ---
+  // --- Phase 5: cascade (modules + specialists, informed by repos) ---
   onProgress('Cascade: module breakdown + specialists...');
   const { modules, analyses: moduleAnalyses } = await runCascade(intent, repoAnalyses, deps.cascade);
 
@@ -195,17 +204,21 @@ export async function runPipeline(idea, options = {}) {
   onProgress('Gathering inspiration (HN, npm, Stack Overflow, papers)...');
   const inspiration = await gatherInspiration(intent, deps.inspiration);
 
+  // --- Phase 5.6: adversarial review (challenge high-impact claims before synthesis) ---
+  onProgress("Adversarial review (devil's advocate)...");
+  const criticalReview = await runAdversarialReview(intent, repoAnalyses, moduleAnalyses, deps.claudeMd);
+
   // --- Phase 6: synthesis ---
   onProgress('Synthesizing the final report...');
-  const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd, inspiration);
+  const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd, inspiration, criticalReview);
 
   // --- Phase 7: write documents (rootCopy only in real mode) ---
   onProgress('Writing documents...');
   const dir = createProjectDir();
-  writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, finalReport, rootCopy: !dry });
+  writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport, rootCopy: !dry });
 
   onProgress(`Done. Output in ${dir}`);
-  return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, finalReport };
+  return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport };
 }
 
 // --- main block: argv parsing (--idea/--dry-run/--resume) ---

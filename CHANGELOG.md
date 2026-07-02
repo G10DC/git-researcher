@@ -3,6 +3,31 @@
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [3.3.0] - 2026-07-02 - Per-keyword discovery + multi-perspective agents
+
+### Added
+- **Per-keyword discovery coverage**: candidates are now tagged with the keyword(s) that surfaced
+  them (`matchedKeywords`, propagated through `duckSearch` -> `repoEnricher`); the ranker selects
+  up to `PER_KEYWORD` repos **per searched keyword** (`takePerKeyword`), so minority components of
+  the idea are represented instead of being crowded out by a few popular repos. `ENRICH_PER_KEYWORD`
+  broadens the enriched pool; `TOP_N_REPOS` remains as a global safety-net cap.
+- **Second analysis lens per repo**: `analyzeRepoWithCritique` runs a "Security & Reliability
+  Auditor" alongside the "Code Archaeologist" in parallel -> genuine multi-perspective analysis.
+  Repo docs carry the role in the filename (`3_repo_analysis_<n>_<owner>_<repo>_<role>.md`).
+- **Adversarial review (progressive verification)**: `analysis/adversarialReview.js` - a single
+  devil's-advocate agent that challenges the high-impact claims of the repo + module analyses
+  before synthesis; surfaced as `7_critical_review.md` and a `## Critical review` synth section +
+  report section "Critical Considerations and Risk Register". (Promotes a ROADMAP medium-term item.)
+
+### Changed
+- `duckSearch.buildQueries` now returns `[{ q, kw }]` (query + its keyword) to drive the tagging.
+- `synthesizer`: `buildSynthesisPrompt` extracted (keeps `synthesizeReport` under the complexity
+  threshold now that it takes an extra `criticalReview` argument).
+
+### Notes
+- The Auditor reuses the same `fetchIssues` path as the Archaeologist (one extra issues fetch per
+  repo in real mode); acceptable for the typical 5-12 repo batch.
+
 ## [3.2.0] - 2026-07-02 - Multi-source inspiration layer
 
 ### Added

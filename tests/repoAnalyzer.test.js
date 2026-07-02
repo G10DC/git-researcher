@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeRepo } from '../src/analysis/repoAnalyzer.js';
+import { analyzeRepo, analyzeRepoWithCritique } from '../src/analysis/repoAnalyzer.js';
 
 const intent = { description: 'a tool that finds and analyzes repositories' };
 
@@ -69,4 +69,23 @@ test('analyzeRepo tolerates a failing fetchIssues without aborting', async () =>
     { runClaude: async () => 'OK', fetchIssues: async () => { throw new Error('boom'); } }
   );
   assert.equal(res.analysis, 'OK');
+});
+
+test('analyzeRepoWithCritique runs two lenses (Archaeologist + Auditor) in parallel', async () => {
+  const systems = [];
+  const runClaude = async (prompt, systemPrompt) => { systems.push(systemPrompt); return 'X'; };
+  const res = await analyzeRepoWithCritique(
+    { fullName: 'a/b', description: 'd', readmeSnippet: 'r'.repeat(200) },
+    intent,
+    { runClaude, fetchIssues: async () => [] }
+  );
+  assert.equal(res.length, 2, 'two entries (one per lens)');
+  assert.deepEqual(
+    res.map((r) => r.role).sort(),
+    ['Code Archaeologist', 'Security & Reliability Auditor']
+  );
+  assert.equal(res[0].repo, 'a/b');
+  assert.equal(res[0].analysis, 'X');
+  assert.equal(systems.length, 2, 'two parallel agent calls');
+  assert.ok(systems.some((s) => /Auditor/.test(s)), 'auditor system prompt used');
 });

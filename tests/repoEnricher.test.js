@@ -34,11 +34,12 @@ test('parseGithub extracts stars/topics/lastUpdated/readme', () => {
 });
 
 test('enrichRepos with mock getPage (DI) enriches without a browser', async () => {
-  const candidates = [{ fullName: 'a/b', url: 'https://github.com/a/b' }];
+  const candidates = [{ fullName: 'a/b', url: 'https://github.com/a/b', matchedKeywords: ['vector'] }];
   const res = await enrichRepos(candidates, { getPage: async () => ghHtml('a', 'b'), cache: NOOP_CACHE });
   assert.equal(res.length, 1);
   assert.equal(res[0].stars, 20100);
   assert.equal(res[0]._failed, undefined);
+  assert.deepEqual(res[0].matchedKeywords, ['vector'], 'matchedKeywords propagated through enrichment');
 });
 
 test('enrichRepos marks _failed when getPage always fails', async () => {

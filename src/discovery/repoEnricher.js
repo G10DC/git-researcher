@@ -77,6 +77,7 @@ export function parseGithub(html, base) {
   return {
     fullName: base.fullName,
     url: base.url,
+    matchedKeywords: base.matchedKeywords || [],
     description: description || undefined,
     stars,
     openIssues,
@@ -131,7 +132,7 @@ async function enrichWith(candidates, getPage, cache) {
     }
     if (!html) {
       console.warn(`⚠️ Enrichment failed for ${c.fullName} (404/private/timeout)`);
-      out.push({ fullName: c.fullName, url: c.url, _failed: true });
+      out.push({ fullName: c.fullName, url: c.url, matchedKeywords: c.matchedKeywords || [], _failed: true });
       continue;
     }
     try {

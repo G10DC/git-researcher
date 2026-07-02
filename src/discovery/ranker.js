@@ -1,9 +1,10 @@
 // src/discovery/ranker.js
 // PURE ranking functions (no I/O).
 // preRank: cheap ordering on fullName+title+snippet to pick what to enrich.
-// rankRepos: tiered scoring truncated to config.TOP_N_REPOS.
+// takePerKeyword: coverage guarantee - up to N repos per searched keyword (union, dedup).
+// rankRepos: tiered scoring, then per-keyword selection with a global safety-net fallback.
 
-import { TOP_N_REPOS, RANKING_WEIGHTS } from '../core/config.js';
+import { TOP_N_REPOS, PER_KEYWORD, RANKING_WEIGHTS } from '../core/config.js';
 
 /** Primary keywords (lowercase). */
 function primaryKeywords(intent) {
@@ -43,7 +44,33 @@ function normRecency(lastUpdated) {
 }
 
 /**
- * Full tiered ranking. Returns the top-N ranked repos with score/scoreBreakdown.
+ * Selects up to `perKeyword` items per keyword (union, dedup by fullName),
+ * scanning `items` in their given (priority) order. Pure.
+ * @param {Array<{fullName:string,matchedKeywords?:string[]}>} items already sorted best-first
+ * @param {string[]} kws
+ * @param {number} perKeyword
+ * @returns {Array}
+ */
+export function takePerKeyword(items, kws, perKeyword) {
+  const lower = kws.map((k) => String(k).toLowerCase());
+  const selected = new Map();
+  for (const kw of lower) {
+    let taken = 0;
+    for (const it of items) {
+      if (taken >= perKeyword) break;
+      const matched = ((it && it.matchedKeywords) || []).map((k) => String(k).toLowerCase());
+      if (matched.includes(kw) && !selected.has(it.fullName)) {
+        selected.set(it.fullName, it);
+        taken++;
+      }
+    }
+  }
+  return [...selected.values()];
+}
+
+/**
+ * Full tiered ranking, then per-keyword selection with a global safety-net fallback.
+ * Returns repos with score/scoreBreakdown, guaranteeing coverage of the searched keywords.
  * @param {Array} enriched
  * @param {Object} intent
  * @returns {Array}
@@ -97,6 +124,23 @@ export function rankRepos(enriched, intent) {
   for (const r of scored) {
     if (!best.has(r.fullName) || r.score > best.get(r.fullName).score) best.set(r.fullName, r);
   }
+  const byScore = [...best.values()].sort((a, b) => b.score - a.score);
 
-  return [...best.values()].sort((a, b) => b.score - a.score).slice(0, TOP_N_REPOS);
+  // Per-keyword selection: guarantees representation of every searched keyword.
+  const picked = takePerKeyword(byScore, kws, PER_KEYWORD);
+  const pickedNames = new Set(picked.map((r) => r.fullName));
+
+  // Safety-net fallback: top up to TOP_N_REPOS with the best remaining globals
+  // (covers repos without matchedKeywords - e.g. GitHub API fallback - or empty-keyword SERPs).
+  if (picked.length < TOP_N_REPOS) {
+    for (const r of byScore) {
+      if (picked.length >= TOP_N_REPOS) break;
+      if (!pickedNames.has(r.fullName)) {
+        picked.push(r);
+        pickedNames.add(r.fullName);
+      }
+    }
+  }
+
+  return picked.sort((a, b) => b.score - a.score);
 }

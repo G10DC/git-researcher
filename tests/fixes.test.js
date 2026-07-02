@@ -32,10 +32,10 @@ test('cleanJsonString cleans fenced blocks with CRLF terminators', () => {
 
 test('buildQueries alternates site:github.com {kw} and the inurl:topics variant', () => {
   const q = buildQueries({ keywords: ['vector database', 'rust', 'hnsw'], technologies: [] });
-  assert.equal(q[0], 'site:github.com vector database');
-  assert.equal(q[1], 'site:github.com rust inurl:topics');
-  assert.equal(q[2], 'site:github.com hnsw');
-  assert.ok(q.some((x) => x.includes('inurl:topics')));
+  assert.equal(q[0].q, 'site:github.com vector database');
+  assert.equal(q[1].q, 'site:github.com rust inurl:topics');
+  assert.equal(q[2].q, 'site:github.com hnsw');
+  assert.ok(q.some((e) => e.q.includes('inurl:topics')));
 });
 
 test('parseGithubUrl normalizes deep paths to the repo', () => {

@@ -111,16 +111,16 @@ test('buildQueries does not combine multiple user keywords in one query', () => 
   const keywords = ['vector database', 'rust'];
   const q = buildQueries({ keywords, technologies: ['tokio'] });
   assert.ok(q.length > 0);
-  q.forEach((query) => {
-    assert.ok(query.startsWith('site:github.com '));
-    const hits = keywords.filter((k) => query.includes(k)).length;
+  q.forEach((e) => {
+    assert.ok(e.q.startsWith('site:github.com '));
+    const hits = keywords.filter((k) => e.q.includes(k)).length;
     assert.ok(hits <= 1);
   });
 });
 
 test('buildQueries does not add the tech dork with three or more keywords', () => {
   const q = buildQueries({ keywords: ['a', 'b', 'c'], technologies: ['tokio'] });
-  assert.equal(q.some((x) => x.includes('tokio')), false);
+  assert.equal(q.some((e) => e.q.includes('tokio')), false);
 });
 
 test('parseCount handles k/M suffixes and separators', () => {

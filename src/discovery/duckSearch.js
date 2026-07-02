@@ -1,6 +1,7 @@
 // src/discovery/duckSearch.js
 // GitHub repo discovery via DuckDuckGo + dorks (native fetch, no puppeteer).
-// Parsing is delegated to serpParser (DRY); retry is centralized in core/utils.withRetry.
+// Each candidate is tagged with the keyword(s) that surfaced it (matchedKeywords),
+// so the ranker can guarantee per-keyword coverage. Parsing is in serpParser; retry in withRetry.
 
 import {
   DUCKDUCKGO_HTML,
@@ -18,31 +19,31 @@ import { makeKey, DEFAULT_CACHE } from '../io/cache.js';
 import { parseSerp } from './serpParser.js';
 
 /**
- * Builds N single-keyword queries (no AND-grouping). Capped at MAX_KEYWORDS (budget).
+ * Builds N single-keyword queries, each paired with its keyword.
  * @param {Object} intent
- * @returns {string[]}
+ * @returns {Array<{q:string,kw:string}>}
  */
 export function buildQueries(intent) {
   const keywords = (intent.keywords || []).slice(0, MAX_KEYWORDS);
   const techs = intent.technologies || [];
-  const queries = [];
+  const entries = [];
   const used = new Set();
-  const push = (q) => {
-    if (q && !used.has(q) && queries.length < MAX_KEYWORDS) {
+  const push = (q, kw) => {
+    if (q && !used.has(q) && entries.length < MAX_KEYWORDS) {
       used.add(q);
-      queries.push(q);
+      entries.push({ q, kw });
     }
   };
   // Alternate template[0] (site:github.com {kw}) and template[1] (... inurl:topics)
   // per keyword: dork variety without AND-grouping, within the MAX_KEYWORDS budget.
   keywords.forEach((kw, i) => {
     const tpl = i % 2 === 0 ? DORK_TEMPLATES[0] : DORK_TEMPLATES[1];
-    push(tpl.replace('{kw}', kw));
+    push(tpl.replace('{kw}', kw), kw);
   });
-  if (queries.length < 3 && techs.length && keywords.length) {
-    push(DORK_TEMPLATES[2].replace('{tech}', techs[0]).replace('{kw}', keywords[0]));
+  if (entries.length < 3 && techs.length && keywords.length) {
+    push(DORK_TEMPLATES[2].replace('{tech}', techs[0]).replace('{kw}', keywords[0]), keywords[0]);
   }
-  return queries;
+  return entries;
 }
 
 /**
@@ -109,27 +110,32 @@ async function fetchQueryHtml(query, fetchImpl, cache) {
 }
 
 /**
- * Searches GitHub repositories via DuckDuckGo + dorks.
+ * Searches GitHub repositories via DuckDuckGo + dorks. Each candidate carries the
+ * keyword(s) that surfaced it (`matchedKeywords`) for per-keyword ranking.
  * @param {Object} intent
  * @param {{fetchImpl?:Function, parseResults?:Function, cache?:{get:Function,set:Function}}} [deps]
- * @returns {Promise<Array<{fullName:string,url:string,title:string,snippet:string}>>}
+ * @returns {Promise<Array<{fullName:string,url:string,title:string,snippet:string,matchedKeywords:string[]}>>}
  */
 export async function searchRepos(intent, deps = {}) {
   const fetchImpl = deps.fetchImpl || ((...a) => fetch(...a));
   const parse = deps.parseResults || parseSerp;
   const cache = deps.cache || DEFAULT_CACHE;
-  const queries = buildQueries(intent);
+  const entries = buildQueries(intent);
 
   const found = [];
-  const seen = new Set();
+  const idx = new Map(); // fullName -> index in found
 
-  for (const q of queries) {
+  for (const { q, kw } of entries) {
     const html = await fetchQueryHtml(q, fetchImpl, cache);
     if (html) {
       for (const cand of parse(html)) {
-        if (!seen.has(cand.fullName)) {
-          seen.add(cand.fullName);
-          found.push(cand);
+        const i = idx.get(cand.fullName);
+        if (i !== undefined) {
+          // already discovered through another query: accumulate the keyword
+          found[i].matchedKeywords.push(kw);
+        } else {
+          idx.set(cand.fullName, found.length);
+          found.push({ ...cand, matchedKeywords: [kw] });
         }
       }
     } else {
