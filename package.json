@@ -2,7 +2,7 @@
   "name": "git-researcher",
   "version": "3.2.0",
   "type": "module",
-  "description": "Breaks down an idea, discovers relevant GitHub repositories via DuckDuckGo+dorks, analyzes them with cascade Claude agents and generates structured analysis documents.",
+  "description": "Turns a software idea into structured analysis docs: discovers GitHub repos (DuckDuckGo+dorks) and gathers multi-source inspiration (HN, npm, Stack Overflow, papers), then synthesizes them with cascade Claude agents.",
   "license": "MIT",
   "main": "index.js",
   "scripts": {
