@@ -28,10 +28,11 @@ test('fallbackDiscover maps API results into RepoCandidate', async () => {
     { keywords: ['vector database', 'rust'] },
     { fetchImpl: mockFetch }
   );
-  assert.equal(res.length, 2);
+  assert.equal(res.length, 2, 'deduped across the per-keyword queries');
   assert.equal(res[0].fullName, 'qdrant/qdrant');
   assert.equal(res[0].url, 'https://github.com/qdrant/qdrant');
   assert.equal(res[0].snippet, 'Vector search engine');
+  assert.equal(res[0].matchedKeywords[0], 'vector database', 'tagged with the surfacing keyword');
   assert.equal(res[1].snippet, '', 'null description -> empty string');
 });
 
@@ -40,12 +41,10 @@ test('fallbackDiscover returns [] without keywords', async () => {
   assert.deepEqual(res, []);
 });
 
-test('fallbackDiscover propagates HTTP errors', async () => {
+test('fallbackDiscover degrades to [] on HTTP error (never throws)', async () => {
   const mockFetch = async () => ({ ok: false, status: 403, json: async () => ({}) });
-  await assert.rejects(
-    () => fallbackDiscover({ keywords: ['x'] }, { fetchImpl: mockFetch }),
-    /403/
-  );
+  const res = await fallbackDiscover({ keywords: ['x'] }, { fetchImpl: mockFetch });
+  assert.deepEqual(res, []);
 });
 
 test('fetchOpenIssues maps items and excludes pull requests', async () => {

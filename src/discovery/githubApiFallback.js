@@ -53,24 +53,40 @@ export async function githubGet(path, deps = {}) {
 
 /**
  * Discovery via the GitHub Search API (safety net when DuckDuckGo is empty/blocked).
+ * Runs ONE broad query PER keyword (not an AND of all keywords): niche/compound keywords return
+ * 0 as a strict AND but thousands individually. Each candidate is tagged with its keyword so the
+ * per-keyword ranker still applies. Degrades to [] on per-query errors (never throws).
  * @param {Object} intent
  * @param {{fetchImpl?:Function}} [deps]
- * @returns {Promise<Array<{fullName:string,url:string,title:string,snippet:string}>>}
+ * @returns {Promise<Array<{fullName:string,url:string,title:string,snippet:string,matchedKeywords:string[]}>>}
  */
 export async function fallbackDiscover(intent, deps = {}) {
   const kws = (intent.keywords || []).slice(0, 3);
   if (kws.length === 0) return [];
-  const q = kws.map((k) => `"${k}"`).join(' ');
-  const data = await githubGet(
-    `/search/repositories?q=${encodeURIComponent(q)}&sort=stars&order=desc&per_page=20`,
-    deps
-  );
-  return (data.items || []).map((it) => ({
-    fullName: it.full_name,
-    url: it.html_url,
-    title: it.full_name,
-    snippet: it.description || '',
-  }));
+  const found = [];
+  const seen = new Set();
+  for (const kw of kws) {
+    try {
+      const data = await githubGet(
+        `/search/repositories?q=${encodeURIComponent(kw)}&sort=stars&order=desc&per_page=10`,
+        deps
+      );
+      for (const it of data.items || []) {
+        if (seen.has(it.full_name)) continue;
+        seen.add(it.full_name);
+        found.push({
+          fullName: it.full_name,
+          url: it.html_url,
+          title: it.full_name,
+          snippet: it.description || '',
+          matchedKeywords: [kw],
+        });
+      }
+    } catch (e) {
+      console.warn(`⚠️ GitHub API fallback query failed for '${kw}': ${e.message}`);
+    }
+  }
+  return found;
 }
 
 /**
