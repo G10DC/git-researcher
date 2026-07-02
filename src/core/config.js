@@ -41,8 +41,9 @@ export const NAV_TIMEOUT_MS = 45000;
 /** Max attempts on a failed/empty request. */
 export const MAX_RETRIES = 3;
 
-/** Timeout for a single Claude CLI call (ms). */
-export const CLAUDE_TIMEOUT_MS = 180000;
+/** Timeout for a single Claude CLI call (ms). The synthesis step aggregates many analyses
+ * (two lenses/repo + adversarial review) and generates a long report, so it needs ample headroom. */
+export const CLAUDE_TIMEOUT_MS = 600000;
 
 /** Hierarchical ranking weights (weighted sum = final score). */
 export const RANKING_WEIGHTS = {
