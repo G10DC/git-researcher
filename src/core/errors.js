@@ -12,7 +12,7 @@ export class GitResearcherError extends Error {
   }
 }
 
-/** Claude CLI missing, not authenticated, timed out, or exited non-zero. */
+/** Analysis Engine CLI missing, not authenticated, timed out, or exited non-zero. */
 export class ClaudeError extends GitResearcherError {
   constructor(message, opts) {
     super(message, opts);

@@ -1,6 +1,5 @@
 // src/io/reportWriter.js
-// Writes the structured output documents into projects/<TIMESTAMP>/.
-// Formatting + file I/O only.
+// Writes structured output documents into projects/<TIMESTAMP>/ using atomic file operations.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,18 +28,21 @@ export function createProjectDir(base = process.cwd()) {
   return dir;
 }
 
+/**
+ * Atomic write helper: writes to temporary file first, then renames.
+ */
 function write(dir, name, content) {
   const isJson = name.endsWith('.json');
-  fs.writeFileSync(path.join(dir, name), isJson ? JSON.stringify(content, null, 2) : String(content));
+  const targetPath = path.join(dir, name);
+  const tmpPath = targetPath + '.tmp';
+  const data = isJson ? JSON.stringify(content, null, 2) : String(content);
+
+  fs.writeFileSync(tmpPath, data, 'utf-8');
+  fs.renameSync(tmpPath, targetPath);
 }
 
 /**
- * Writes one numbered .md per analysis (shared shape for repo and module analyses).
- * @param {string} dir
- * @param {Array} analyses
- * @param {string} filePrefix e.g. '3_repo_analysis'
- * @param {(a:Object)=>string} makeName sanitized suffix
- * @param {(a:Object)=>string} makeHeading full markdown body
+ * Writes one numbered .md per analysis.
  */
 function writeAnalyses(dir, analyses, filePrefix, makeName, makeHeading) {
   (analyses || []).forEach((a, i) => {
@@ -49,14 +51,7 @@ function writeAnalyses(dir, analyses, filePrefix, makeName, makeHeading) {
 }
 
 /**
- * Writes all the output documents.
- * @param {string} projectDir
- * @param {{
- *   intent?:Object, candidates?:Array, ranked?:Array, repoAnalyses?:Array,
- *   modules?:Array, moduleAnalyses?:Array, inspiration?:Object, criticalReview?:string,
- *   finalReport?:string, rootCopy?:boolean
- * }} payload
- * @returns {string} projectDir
+ * Writes all output documents atomically.
  */
 export function writeDocs(projectDir, payload) {
   const {
@@ -72,7 +67,6 @@ export function writeDocs(projectDir, payload) {
     topN: ranked || [],
   });
 
-  // role is part of the filename so multiple lenses on the same repo don't collide
   writeAnalyses(
     projectDir,
     repoAnalyses,
@@ -99,7 +93,10 @@ export function writeDocs(projectDir, payload) {
 
   write(projectDir, 'final_report.md', finalReport || '');
   if (rootCopy) {
-    fs.writeFileSync(path.join(process.cwd(), 'architectural_report.md'), String(finalReport || ''));
+    const rootPath = path.join(process.cwd(), 'architectural_report.md');
+    const rootTmp = rootPath + '.tmp';
+    fs.writeFileSync(rootTmp, String(finalReport || ''), 'utf-8');
+    fs.renameSync(rootTmp, rootPath);
   }
 
   return projectDir;

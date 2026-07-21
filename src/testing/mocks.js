@@ -1,5 +1,5 @@
 // src/testing/mocks.js
-// DI mocks for dryRun: no real calls to Claude/DuckDuckGo/GitHub/inspiration sources.
+// DI mocks for dryRun: no real calls to Analysis Engine/DuckDuckGo/GitHub/inspiration sources.
 // Extracted from the pipeline to keep the orchestrator slim and reuse mocks in tests.
 
 /**
@@ -32,7 +32,7 @@ export function createDryRunMocks(idea) {
 
   const mockClaudeMd = (prompt) =>
     `## Analysis (dryRun mock)\n\nPrompt received (${String(prompt).length} chars). ` +
-    `Fictional content to validate the pipeline without real calls to Claude.`;
+    `Fictional content to validate the pipeline without real calls to Analysis Engine.`;
 
   const mockFetch = () =>
     Promise.resolve({

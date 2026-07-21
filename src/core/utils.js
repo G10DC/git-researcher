@@ -15,7 +15,31 @@ export function getTimestamp() {
 }
 
 /**
- * Strips markdown fences (```json ... ```) and trims.
+ * Sanitizes external untrusted text (READMEs, search snippets) to prevent prompt injection,
+ * strip raw HTML/SVG junk, and trim token bloat.
+ * @param {string} text
+ * @param {number} [maxLen=3000]
+ * @returns {string}
+ */
+export function sanitizeScrapedContent(text, maxLen = 3000) {
+  if (!text) return '';
+  let cleaned = String(text)
+    // Strip HTML/SVG tags
+    .replace(/<[^>]*>/g, ' ')
+    // Neutralize common prompt injection directives
+    .replace(/\b(ignore\s+all\s+previous\s+instructions|system\s+prompt|overwrite\s+instructions)\b/gi, '[filtered]')
+    // Strip badge image markdown links e.g. [![...](...)]
+    .replace(/\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, '')
+    // Replace multiple newlines/spaces
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + '... [truncated]' : cleaned;
+}
+
+/**
+ * Strips markdown fences (```json ... ```) and extracts valid JSON substring.
  * @param {string} str
  * @returns {string}
  */
@@ -26,7 +50,19 @@ export function cleanJsonString(str) {
       .replace(/^```(?:json)?\r?\n/, '')
       .replace(/\r?\n```$/, '');
   }
-  return cleaned.trim();
+  cleaned = cleaned.trim();
+  // Subtree extraction fallback if surrounding prose remains
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return cleaned.slice(firstBrace, lastBrace + 1);
+  }
+  const firstBracket = cleaned.indexOf('[');
+  const lastBracket = cleaned.lastIndexOf(']');
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    return cleaned.slice(firstBracket, lastBracket + 1);
+  }
+  return cleaned;
 }
 
 /**
@@ -49,7 +85,6 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Runs `fn` with linear-backoff retry; returns the result or `null` if all attempts fail.
- * Centralizes the retry pattern used by duckSearch and repoEnricher (DRY).
  * @template T
  * @param {(attempt:number)=>Promise<T>} fn
  * @param {{retries?:number, delayMs?:number}} [opts]
@@ -84,8 +119,6 @@ export async function runPool(items, worker, concurrency = 3) {
       results[i] = await worker(items[i], i);
     }
   }
-  // concurrency<=0 is normalized to 1 (when there are items) so the worker still runs
-  // instead of returning an array of empty slots.
   const size = items.length === 0 ? 0 : Math.max(1, Math.min(concurrency, items.length));
   await Promise.all(Array.from({ length: size }, () => runner()));
   return results;

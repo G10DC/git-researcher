@@ -1,5 +1,5 @@
 // tests/smoke_pipeline.test.js
-// E2E in dryRun mode (mock DI): no real calls to Claude/DuckDuckGo/GitHub.
+// E2E in dryRun mode (mock DI): no real calls to Analysis Engine/DuckDuckGo/GitHub.
 // Verifies that the pipeline generates all expected output documents.
 
 import { test } from 'node:test';
