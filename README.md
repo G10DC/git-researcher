@@ -1,7 +1,7 @@
 # 🔎 GitResearcher
 
 A terminal tool (Node.js, ESM) that, given a **software idea**, breaks it down, **discovers relevant
-GitHub repositories** via DuckDuckGo + dorks, ranks and analyzes them with **specialized Claude agents
+GitHub repositories** via DuckDuckGo + dorks, ranks and analyzes them with **specialized specialized analysis agents
 in a cascade**, and produces a **set of structured analysis documents** plus a final report.
 
 It combines **research** (what already exists, the state of the art) and **design** (breakdown into
@@ -23,7 +23,7 @@ idea → [breakdown] → [DuckDuckGo+dorks] → [pre-rank] → [GitHub enrichmen
 ```
 
 Each phase is isolated (non-fatal failure → saves partials and continues). `dryRun` injects DI mocks
-across the whole chain → runs offline without Claude/network. Details and diagrams in
+across the whole chain → runs offline without Analysis Engine/network. Details and diagrams in
 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
 ---
@@ -31,7 +31,7 @@ across the whole chain → runs offline without Claude/network. Details and diag
 ## 🛠️ Prerequisites
 
 - **Node.js 20+**
-- **Claude Code CLI** authenticated (`npm install -g @anthropic-ai/claude-code`) - for the analysis/synthesis phases
+- **Execution CLI runner** authenticated (`npm install -g @anthropic-ai/claude-code`) - for the analysis/synthesis phases
 - **Chromium** for puppeteer (if enrichment fails: `npx puppeteer browsers install chrome`)
 
 ---
@@ -48,8 +48,8 @@ npm install -D   # dev tools (eslint) - optional, required by CI/lint
 ## ▶️ Usage
 
 ```bash
-npm start        # real: asks for an idea, uses Claude CLI + DuckDuckGo + puppeteer
-npm run dry      # offline smoke (mocks, no Claude/network)
+npm start        # real: asks for an idea, uses Analysis Engine CLI + DuckDuckGo + puppeteer
+npm run dry      # offline smoke (mocks, no Analysis Engine/network)
 npm test         # test suite (95 tests, offline)
 npm run coverage # coverage report
 npm run lint     # eslint (requires devDependencies)

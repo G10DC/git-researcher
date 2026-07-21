@@ -64,7 +64,7 @@ Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versions fol
   into the per-repo analysis as real user pain points (limitations/risks + lessons-for-the-idea).
 - **`githubGet`**: rate-limit-aware GitHub API helper - warns on low `X-RateLimit-Remaining`, backs
   off once on `Retry-After` / 429 / 403. Reused by the discovery fallback and `fetchOpenIssues`.
-- **`CLAUDE_EXTRA_ARGS`**: forward-compatible hook for determinism/model flags on the Claude CLI
+- **`CLAUDE_EXTRA_ARGS`**: forward-compatible hook for determinism/model flags on the Analysis Engine CLI
   (the CLI does not expose `--temperature` as of v2.1.x).
 - **`ROADMAP.md`**: the multi-source inspiration direction and deferred ideas.
 - Tests: new `tests/repoAnalyzer.test.js` + `openIssues`, `fetchOpenIssues`, `CLAUDE_EXTRA_ARGS`.

@@ -134,7 +134,7 @@ restructuring the existing phases.
   a probe; needs a second look. Could subsume the standalone academic source.
 - **Reddit, Product Hunt, Medium** - useful zeitgeist/competitor signals but API friction (Reddit
   OAuth/paid tier, Medium has no official API) or ToS concerns. Low priority.
-- **True model-level determinism** (`temperature=0`) - the Claude Code CLI does not expose it; would
+- **True model-level determinism** (`temperature=0`) - the Execution CLI runner does not expose it; would
   require calling the Anthropic API directly instead of shelling out to the CLI.
 
 ---

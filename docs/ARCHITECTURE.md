@@ -1,7 +1,7 @@
 # Architecture - GitResearcher
 
 A Node.js (ESM) tool that turns a textual idea into a set of analysis documents, discovering real
-GitHub repositories (via DuckDuckGo + dorks) and analyzing them with specialized Claude agents in a
+GitHub repositories (via DuckDuckGo + dorks) and analyzing them with specialized specialized analysis agents in a
 cascade. Diagrams in [Mermaid](https://mermaid.js.org/) (rendered on GitHub).
 
 ## 1. End-to-end pipeline
@@ -33,7 +33,7 @@ flowchart TD
 
 Each phase is isolated: a non-fatal failure saves partials and continues
 (`fail non-fatal + save partial` philosophy). `dryRun` injects DI mocks across the whole chain
--> no real calls to Claude/DuckDuckGo/GitHub.
+-> no real calls to Analysis Engine/DuckDuckGo/GitHub.
 
 ## 2. Package organization
 
