@@ -103,7 +103,7 @@ export async function synthesizeReport(intent, repoAnalyses, moduleAnalyses, dep
   const run = deps.runClaude || defaultRun;
 
   // Cap each analysis in the synthesis prompt: with two lenses/repo + adversarial review the
-  // aggregate prompt is large, and an uncapped generation can blow past the Claude timeout.
+  // aggregate prompt is large, and an uncapped generation can blow past the Analysis Engine timeout.
   // The full analyses are still written to disk (3_repo_analysis_* / 5_module_analysis_*).
   const cap = (s, n) => String(s || '').slice(0, n);
   const repoText = (repoAnalyses || [])

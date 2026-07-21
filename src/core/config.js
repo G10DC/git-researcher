@@ -10,7 +10,7 @@ export const MAX_CANDIDATES = 30;
 /** Keyword budget for DuckDuckGo queries (single-keyword queries). */
 export const MAX_KEYWORDS = 6;
 
-/** Max concurrency for independent Claude calls. */
+/** Max concurrency for independent Analysis Engine calls. */
 export const POOL_SIZE = 3;
 
 /** Primary DuckDuckGo endpoint (server-rendered, no browser). */
@@ -41,7 +41,7 @@ export const NAV_TIMEOUT_MS = 45000;
 /** Max attempts on a failed/empty request. */
 export const MAX_RETRIES = 3;
 
-/** Timeout for a single Claude CLI call (ms). The synthesis step aggregates many analyses
+/** Timeout for a single Analysis Engine CLI call (ms). The synthesis step aggregates many analyses
  * (two lenses/repo + adversarial review) and generates a long report, so it needs ample headroom. */
 export const CLAUDE_TIMEOUT_MS = 600000;
 
