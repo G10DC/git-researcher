@@ -35,9 +35,9 @@ GitResearcher/
 │   ├── duckSearch.js          # DuckDuckGo + dorks (fetch+cheerio, decode uddg)  (DI: fetchImpl)
 │   ├── repoEnricher.js        # GitHub metadata (puppeteer/cheerio)    (DI: getPage)
 │   ├── ranker.js              # preRank (name+title+snippet) + rankRepos (PURE)
-│   ├── repoAnalyzer.js        # per-repo analysis (Claude)             (DI: runClaude)
-│   ├── cascadeOrchestrator.js # cascade modules + specialists (Claude) (DI: runClaude*/runClaudeJSONWithRetry)
-│   ├── synthesizer.js         # final report (Claude)                  (DI: runClaude)
+│   ├── repoAnalyzer.js        # per-repo analysis (Analysis Engine)             (DI: runClaude)
+│   ├── cascadeOrchestrator.js # cascade modules + specialists (Analysis Engine) (DI: runClaude*/runClaudeJSONWithRetry)
+│   ├── synthesizer.js         # final report (Analysis Engine)                  (DI: runClaude)
 │   ├── reportWriter.js        # structured document writing
 │   ├── pipeline.js            # orchestrator (glue) + main argv block + dryRun
 │   ├── cache.js               # (OPTIONAL) on-disk cache of SERP/repo pages
@@ -93,7 +93,7 @@ in `dryRun` the pipeline injects mocks. No ESM mocking.
 
 ### `config.js`
 Data only. `TOP_N_REPOS` (unique name), `MAX_CANDIDATES` (post preRank), `MAX_KEYWORDS` (DDG budget),
-`POOL_SIZE` (Claude concurrency), `DUCKDUCKGO_HTML`, `DUCKDUCKGO_LITE` (fallback), `USE_DDG_POST`,
+`POOL_SIZE` (Analysis Engine concurrency), `DUCKDUCKGO_HTML`, `DUCKDUCKGO_LITE` (fallback), `USE_DDG_POST`,
 `DORK_TEMPLATES`, `REQUEST_DELAY_MS`, `FETCH_TIMEOUT_MS` (DDG fetch), `NAV_TIMEOUT_MS` (puppeteer
 page.goto, **distinct**), `MAX_RETRIES`, `CLAUDE_TIMEOUT_MS`, `RANKING_WEIGHTS`, `DEFAULT_USER_AGENT`
 (**constant** UA, no rotation), `PATH_PROJECTS`, `CACHE_DIR`, `CACHE_TTL_HOURS`,
@@ -143,7 +143,7 @@ defaultBranch, `lastUpdated` **from `<relative-time datetime>`**, readmeSnippet.
 most discussed open issues as real user pain points to ground the "limitations/risks" and
 "lessons for the user's idea" sections. Low-signal guard: metadata-only mode when the README is
 missing/tiny; the system prompt forbids requesting tools/permissions. Anti-injection + English output.
-On Claude error returns a "failed" analysis (does not propagate).
+On Analysis Engine error returns a "failed" analysis (does not propagate).
 
 ### `cascadeOrchestrator.js`
 `runCascade(intent, repoAnalyses, deps = {})` -> `{ modules, analyses }`. **Phase 1 via
