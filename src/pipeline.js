@@ -59,31 +59,29 @@ async function getSentinel() {
  */
 export async function tryResume() {
   try {
-    const projectsDir = config.PATH_PROJECTS || process.cwd();
+    const projectsDir = config.PATH_PROJECTS || 'projects';
     if (!fs.existsSync(projectsDir)) return null;
 
     const dirs = fs.readdirSync(projectsDir)
       .filter(f => fs.statSync(path.join(projectsDir, f)).isDirectory())
       .sort((a, b) => b.localeCompare(a));
       
-    for (const d of dirs) {
-      const fullPath = path.join(projectsDir, d);
-      try {
-        const intentPath = path.join(fullPath, '1_intent_decomposition.json');
-        const candidatesPath = path.join(fullPath, '2_repo_candidates.json');
-        if (fs.existsSync(intentPath) && fs.existsSync(candidatesPath)) {
-          const intent = JSON.parse(fs.readFileSync(intentPath, 'utf8'));
-          const candidatesData = JSON.parse(fs.readFileSync(candidatesPath, 'utf8'));
-          return {
-            resumeDir: path.resolve(fullPath),
-            intent,
-            candidates: candidatesData.candidates || [],
-            ranked: candidatesData.topN || []
-          };
-        }
-      } catch {
-        /* skip corrupt folder */
-      }
+    if (dirs.length === 0) return null;
+
+    const latestDir = dirs[0];
+    const fullPath = path.join(projectsDir, latestDir);
+    const intentPath = path.join(fullPath, '1_intent_decomposition.json');
+    const candidatesPath = path.join(fullPath, '2_repo_candidates.json');
+
+    if (fs.existsSync(intentPath) && fs.existsSync(candidatesPath)) {
+      const intent = JSON.parse(fs.readFileSync(intentPath, 'utf8'));
+      const candidatesData = JSON.parse(fs.readFileSync(candidatesPath, 'utf8'));
+      return {
+        resumeDir: path.resolve(fullPath),
+        intent,
+        candidates: candidatesData.candidates || [],
+        ranked: candidatesData.topN || []
+      };
     }
   } catch {
     /* noop */
