@@ -138,7 +138,7 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
       const text = await html.text();
       const { parseSerp } = await import('./discovery/serpParser.js');
       candidates = parseSerp(text, 'vector search engine');
-      candidates.forEach(c => c.matchedKeywords = ['vector', 'database']);
+      candidates.forEach(c => c.matchedKeywords = intent.keywords || []);
     } catch (err) {
       console.warn(`⚠️ Mock discovery failed: ${err.message}`);
     }
