@@ -6,28 +6,26 @@ import { cleanJsonString, safeJsonParse } from './utils.js';
 import { CLAUDE_TIMEOUT_MS } from './config.js';
 import { ClaudeError } from './errors.js';
 
-// Internal binary probe state
 let probeState = 'unknown';
 
-/** Resets the probe cache (for testing). */
-export function _resetProbe() {
-  probeState = 'unknown';
-}
-
-// Validates CLI runner binary availability
+/**
+ * Ensures the claude CLI binary is available and responsive.
+ * Caches status to avoid duplicate process spawning.
+ */
 async function ensureBinaryAvailable(spawnFn) {
   if (probeState === 'ok') return;
   if (probeState instanceof Error) throw probeState;
 
   const ok = await new Promise((resolve) => {
-    const child = spawnFn('claude', ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let settled = false;
+    const child = spawnFn('claude', ['--version'], { stdio: 'ignore' });
+    let finished = false;
     const finish = (val) => {
-      if (!settled) {
-        settled = true;
-        resolve(val);
-      }
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve(val);
     };
+
     const timer = setTimeout(() => {
       try {
         child.kill('SIGKILL');
@@ -35,13 +33,10 @@ async function ensureBinaryAvailable(spawnFn) {
         /* noop */
       }
       finish(false);
-    }, 8000);
-    child.on('error', () => {
-      clearTimeout(timer);
-      finish(false);
-    });
+    }, 3000);
+
+    child.on('error', () => finish(false));
     child.on('close', (code) => {
-      clearTimeout(timer);
       finish(code === 0);
     });
   });
@@ -64,6 +59,73 @@ async function getChronicle() {
     chronicleInstance = { compressLog: (t) => t };
   }
   return chronicleInstance;
+}
+
+let authState = 'unknown';
+async function checkAuth(spawnFn) {
+  if (authState !== 'unknown') return authState;
+  
+  return new Promise((resolve) => {
+    const child = spawnFn('claude', ['status'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (d) => { output += d; });
+    child.stderr.on('data', (d) => { output += d; });
+    
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch {}
+      resolve(false);
+    }, 4000);
+    
+    child.on('close', () => {
+      clearTimeout(timer);
+      const isLogged = !output.includes('Not signed in') && !output.includes('Not connected');
+      resolve(isLogged);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
+
+async function callOpenRouterFallback(prompt, systemPrompt) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not found in process.env.OPENROUTER_API_KEY');
+  }
+  
+  const model = 'google/gemini-2.5-flash';
+  const url = 'https://openrouter.ai/api/v1/chat/completions';
+  const messages = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+  
+  const body = { model, messages };
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/G10DC/git-researcher',
+      'X-Title': 'GitResearcher'
+    },
+    body: JSON.stringify(body)
+  });
+  
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API failed: ${response.status} - ${errText}`);
+  }
+  
+  const json = await response.json();
+  const text = json.choices?.[0]?.message?.content;
+  if (!text) {
+    throw new Error('OpenRouter API returned an empty response');
+  }
+  return text;
 }
 
 async function callGeminiFallback(prompt, systemPrompt) {
@@ -100,13 +162,30 @@ async function callGeminiFallback(prompt, systemPrompt) {
   return text;
 }
 
+const isTestEnv = process.env.NODE_ENV === 'test' || 
+                  process.env.NODE_TEST_CONTEXT ||
+                  (process.argv && process.argv.some(arg => arg.includes('test') || arg.includes('tests')));
+
+async function handleFallback(prompt, systemPrompt) {
+  if (isTestEnv) {
+    throw new Error('Fallback disabled in test environment');
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    return callOpenRouterFallback(prompt, systemPrompt);
+  }
+  if (process.env.GEMINI_API_KEY) {
+    return callGeminiFallback(prompt, systemPrompt);
+  }
+  throw new Error('No API fallback key available (OPENROUTER_API_KEY / GEMINI_API_KEY)');
+}
+
 /**
  * Runs a prompt on the CLI runner service in headless mode and returns stdout.
  * @param {string} prompt
  * @param {string} systemPrompt
  * @param {number} timeoutMs
  * @param {string} cwd
- * @param {{spawn?:Function}} [deps]
+ * @param {{spawn?:Function, isTestEnv?:boolean}} [deps]
  * @returns {Promise<string>}
  */
 export async function runClaude(
@@ -119,12 +198,17 @@ export async function runClaude(
   const chron = await getChronicle();
   const cleanPrompt = chron.compressLog(prompt);
   const spawnFn = deps.spawn || realSpawn;
+  const localIsTest = isTestEnv || !!deps.isTestEnv;
 
   try {
     await ensureBinaryAvailable(spawnFn);
+    const isAuthed = await checkAuth(spawnFn);
+    if (!isAuthed && !localIsTest) {
+      return handleFallback(cleanPrompt, systemPrompt);
+    }
   } catch (err) {
-    if (process.env.GEMINI_API_KEY) {
-      return callGeminiFallback(cleanPrompt, systemPrompt);
+    if (!localIsTest && (process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)) {
+      return handleFallback(cleanPrompt, systemPrompt);
     }
     throw err;
   }
@@ -145,8 +229,8 @@ export async function runClaude(
       } catch {
         /* noop */
       }
-      if (process.env.GEMINI_API_KEY) {
-        callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+      if (!localIsTest && (process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)) {
+        handleFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
           reject(new ClaudeError('CLAUDE_TIMEOUT'));
         });
       } else {
@@ -169,8 +253,8 @@ export async function runClaude(
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      if (process.env.GEMINI_API_KEY) {
-        callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+      if (!localIsTest && (process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)) {
+        handleFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
           reject(new ClaudeError(`spawn failed: ${err.message}`, { cause: err }));
         });
       } else {
@@ -181,16 +265,16 @@ export async function runClaude(
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === null) {
-        if (process.env.GEMINI_API_KEY) {
-          callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+        if (!localIsTest && (process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)) {
+          handleFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
             reject(new ClaudeError('CLAUDE_TIMEOUT'));
           });
         } else {
           reject(new ClaudeError('CLAUDE_TIMEOUT'));
         }
       } else if (code !== 0) {
-        if (process.env.GEMINI_API_KEY) {
-          callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+        if (!localIsTest && (process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY)) {
+          handleFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
             reject(new ClaudeError(`Service process exited with code ${code}. stderr: ${stderr.slice(0, 300)}`));
           });
         } else {
@@ -226,4 +310,11 @@ export async function runClaudeJSONWithRetry(prompt, systemPrompt = '', deps = {
       `Return valid raw JSON now with no markdown fences or conversational text.`;
     return await run(correction, systemPrompt);
   }
+}
+
+/**
+ * Resets the CLI probe state cache (used in tests).
+ */
+export function _resetProbe() {
+  probeState = 'unknown';
 }
