@@ -59,15 +59,28 @@ async function getSentinel() {
  */
 export async function tryResume() {
   try {
-    const dirs = fs.readdirSync(process.cwd())
-      .filter(f => f.startsWith('project_') && fs.statSync(f).isDirectory())
+    const projectsDir = config.PATH_PROJECTS || process.cwd();
+    if (!fs.existsSync(projectsDir)) return null;
+
+    const dirs = fs.readdirSync(projectsDir)
+      .filter(f => fs.statSync(path.join(projectsDir, f)).isDirectory())
       .sort((a, b) => b.localeCompare(a));
+      
     for (const d of dirs) {
+      const fullPath = path.join(projectsDir, d);
       try {
-        const intent = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'intent.json'), 'utf8'));
-        const candidates = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'candidates.json'), 'utf8'));
-        const ranked = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'ranked.json'), 'utf8'));
-        return { resumeDir: d, intent, candidates, ranked };
+        const intentPath = path.join(fullPath, '1_intent_decomposition.json');
+        const candidatesPath = path.join(fullPath, '2_repo_candidates.json');
+        if (fs.existsSync(intentPath) && fs.existsSync(candidatesPath)) {
+          const intent = JSON.parse(fs.readFileSync(intentPath, 'utf8'));
+          const candidatesData = JSON.parse(fs.readFileSync(candidatesPath, 'utf8'));
+          return {
+            resumeDir: path.resolve(fullPath),
+            intent,
+            candidates: candidatesData.candidates || [],
+            ranked: candidatesData.topN || []
+          };
+        }
       } catch {
         /* skip corrupt folder */
       }
@@ -87,11 +100,23 @@ export async function tryResume() {
 function buildPhaseDeps(dry, mocks) {
   if (dry && mocks) {
     return {
-      intent: { runClaudeJSON: async () => mocks.intent },
-      enrich: { getPage: async () => mocks.githubHtml },
-      claudeMd: { runClaude: async () => mocks.repoAnalysisMd },
-      cascade: { runClaudeJSON: async () => mocks.cascadeJson },
-      inspiration: { fetchImpl: async () => mocks.inspirationHtml }
+      intent: { 
+        runClaudeJSON: async () => mocks.mockIntent(),
+        runClaudeJSONWithRetry: async () => mocks.mockIntent()
+      },
+      enrich: { getPage: mocks.mockGetPage },
+      claudeMd: { runClaude: async (prompt) => mocks.mockClaudeMd(prompt) },
+      cascade: { 
+        runClaudeJSON: async () => mocks.mockModules(),
+        runClaudeJSONWithRetry: async () => mocks.mockModules()
+      },
+      inspiration: { 
+        fetchImpl: mocks.mockFetch,
+        hn: mocks.mockHn,
+        npm: mocks.mockNpm,
+        so: mocks.mockSo,
+        papers: mocks.mockPapers
+      }
     };
   }
   return {
@@ -109,7 +134,16 @@ function buildPhaseDeps(dry, mocks) {
 async function discoverAndRank(intent, dry, deps, onProgress) {
   let candidates = [];
   if (dry) {
-    candidates = deps.inspiration ? [] : [];
+    onProgress('Running parallel multi-source discovery (mock)...');
+    try {
+      const html = await deps.inspiration.fetchImpl();
+      const text = await html.text();
+      const { parseSerp } = await import('./discovery/serpParser.js');
+      candidates = parseSerp(text, 'vector search engine');
+      candidates.forEach(c => c.matchedKeywords = ['vector', 'database']);
+    } catch (err) {
+      console.warn(`⚠️ Mock discovery failed: ${err.message}`);
+    }
   } else {
     onProgress('Running parallel multi-source discovery...');
     const searchTasks = (intent.keywords || []).map(kw => {
@@ -135,7 +169,7 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
 
   onProgress(`Discovered ${candidates.length} unique candidates. Pre-ranking...`);
   const preRanked = preRank(candidates, intent);
-  const toEnrich = takePerKeyword(preRanked, intent);
+  const toEnrich = takePerKeyword(preRanked, intent.keywords || [], config.PER_KEYWORD_LIMIT || 3);
 
   onProgress(`Enriching top ${toEnrich.length} repositories...`);
   const enriched = await enrichRepos(toEnrich, deps.enrich);
@@ -147,12 +181,12 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
 /**
  * Multi-source inspiration fan-out.
  */
-async function gatherInspiration(intent, deps = {}) {
+export async function gatherInspiration(intent, deps = {}) {
   const tasks = [
-    searchHn(intent, deps).catch(err => { console.warn(`⚠️ HN failed: ${err.message}`); return []; }),
-    searchNpm(intent, deps).catch(err => { console.warn(`⚠️ npm failed: ${err.message}`); return []; }),
-    searchSo(intent, deps).catch(err => { console.warn(`⚠️ StackOverflow failed: ${err.message}`); return []; }),
-    searchPapers(intent, deps).catch(err => { console.warn(`⚠️ OpenAlex failed: ${err.message}`); return []; })
+    (deps.hn ? deps.hn(intent) : searchHn(intent, deps)).catch(err => { console.warn(`⚠️ HN failed: ${err.message}`); return []; }),
+    (deps.npm ? deps.npm(intent) : searchNpm(intent, deps)).catch(err => { console.warn(`⚠️ npm failed: ${err.message}`); return []; }),
+    (deps.so ? deps.so(intent) : searchSo(intent, deps)).catch(err => { console.warn(`⚠️ StackOverflow failed: ${err.message}`); return []; }),
+    (deps.papers ? deps.papers(intent) : searchPapers(intent, deps)).catch(err => { console.warn(`⚠️ OpenAlex failed: ${err.message}`); return []; })
   ];
   const results = await Promise.all(tasks);
   return {
