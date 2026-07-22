@@ -24,6 +24,34 @@ import { synthesizeReport } from './analysis/synthesizer.js';
 import { createProjectDir, writeDocs } from './io/reportWriter.js';
 import { createDryRunMocks } from './testing/mocks.js';
 
+let sentinelInstance = null;
+async function getSentinel() {
+  if (sentinelInstance) return sentinelInstance;
+  try {
+    const { SentinelGuard } = await import('../../sentinel/lib/sentinel.js');
+    sentinelInstance = new SentinelGuard({
+      allowlist: [
+        'html.duckduckgo.com',
+        'lite.duckduckgo.com',
+        'duckduckgo.com',
+        'github.com',
+        'api.github.com',
+        'news.ycombinator.com',
+        'hn.algolia.com',
+        'registry.npmjs.org',
+        'api.stackexchange.com',
+        'api.openalex.org',
+        'generativelanguage.googleapis.com'
+      ],
+      scanSecrets: true,
+      scanPII: true
+    });
+  } catch {
+    sentinelInstance = { activate: () => {}, deactivate: () => {} };
+  }
+  return sentinelInstance;
+}
+
 /**
  * Finds the latest project folder with valid intermediates and loads them for resume.
  * @returns {Promise<{resumeDir:string,intent:Object,candidates:Array,ranked:Array}|null>}
@@ -167,58 +195,64 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
  * @returns {Promise<Object>}
  */
 export async function runPipeline(idea, options = {}) {
-  const dry = !!options.dryRun;
-  const onProgress = options.onProgress || (() => {});
-  const mocks = dry ? createDryRunMocks(idea) : null;
-  const deps = buildPhaseDeps(dry, mocks);
+  const sentinel = await getSentinel();
+  sentinel.activate();
+  try {
+    const dry = !!options.dryRun;
+    const onProgress = options.onProgress || (() => {});
+    const mocks = dry ? createDryRunMocks(idea) : null;
+    const deps = buildPhaseDeps(dry, mocks);
 
-  // --- Resume: restarts from saved intermediates (skips discovery/enrich/rank) ---
-  const resumed = !dry && options.resume ? await tryResume() : null;
-  let intent;
-  let candidates;
-  let ranked;
-  if (resumed) {
-    ({ intent, candidates, ranked } = resumed);
-    onProgress(`Resuming from ${resumed.resumeDir}: skipping discovery/enrich/rank (${ranked.length} repos)`);
-  } else {
-    // --- Phase 1: intent ---
-    onProgress('Breaking down the idea...');
-    intent = await extractIntent(idea, deps.intent);
-    // --- Phases 2-3: discovery + rank (per-keyword coverage) ---
-    ({ candidates, ranked } = await discoverAndRank(intent, dry, deps, onProgress));
+    // --- Resume: restarts from saved intermediates (skips discovery/enrich/rank) ---
+    const resumed = !dry && options.resume ? await tryResume() : null;
+    let intent;
+    let candidates;
+    let ranked;
+    if (resumed) {
+      ({ intent, candidates, ranked } = resumed);
+      onProgress(`Resuming from ${resumed.resumeDir}: skipping discovery/enrich/rank (${ranked.length} repos)`);
+    } else {
+      // --- Phase 1: intent ---
+      onProgress('Breaking down the idea...');
+      intent = await extractIntent(idea, deps.intent);
+      // --- Phases 2-3: discovery + rank (per-keyword coverage) ---
+      ({ candidates, ranked } = await discoverAndRank(intent, dry, deps, onProgress));
+    }
+
+    // --- Phase 4: per-repo analysis, two lenses each (Archaeologist + Auditor) ---
+    onProgress('Per-repo analysis (Archaeologist + Auditor)...');
+    const repoAnalyses = (await runPool(
+      ranked,
+      (repo) => analyzeRepoWithCritique(repo, intent, deps.claudeMd),
+      config.POOL_SIZE
+    )).flat();
+
+    // --- Phase 5: cascade (modules + specialists, informed by repos) ---
+    onProgress('Cascade: module breakdown + specialists...');
+    const { modules, analyses: moduleAnalyses } = await runCascade(intent, repoAnalyses, deps.cascade);
+
+    // --- Phase 5.5: inspiration (multi-source fan-out: HN, npm, SO, papers) ---
+    onProgress('Gathering inspiration (HN, npm, Stack Overflow, papers)...');
+    const inspiration = await gatherInspiration(intent, deps.inspiration);
+
+    // --- Phase 5.6: adversarial review (challenge high-impact claims before synthesis) ---
+    onProgress("Adversarial review (devil's advocate)...");
+    const criticalReview = await runAdversarialReview(intent, repoAnalyses, moduleAnalyses, deps.claudeMd);
+
+    // --- Phase 6: synthesis ---
+    onProgress('Synthesizing the final report...');
+    const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd, inspiration, criticalReview);
+
+    // --- Phase 7: write documents (rootCopy only in real mode) ---
+    onProgress('Writing documents...');
+    const dir = createProjectDir();
+    writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport, rootCopy: !dry });
+
+    onProgress(`Done. Output in ${dir}`);
+    return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport };
+  } finally {
+    sentinel.deactivate();
   }
-
-  // --- Phase 4: per-repo analysis, two lenses each (Archaeologist + Auditor) ---
-  onProgress('Per-repo analysis (Archaeologist + Auditor)...');
-  const repoAnalyses = (await runPool(
-    ranked,
-    (repo) => analyzeRepoWithCritique(repo, intent, deps.claudeMd),
-    config.POOL_SIZE
-  )).flat();
-
-  // --- Phase 5: cascade (modules + specialists, informed by repos) ---
-  onProgress('Cascade: module breakdown + specialists...');
-  const { modules, analyses: moduleAnalyses } = await runCascade(intent, repoAnalyses, deps.cascade);
-
-  // --- Phase 5.5: inspiration (multi-source fan-out: HN, npm, SO, papers) ---
-  onProgress('Gathering inspiration (HN, npm, Stack Overflow, papers)...');
-  const inspiration = await gatherInspiration(intent, deps.inspiration);
-
-  // --- Phase 5.6: adversarial review (challenge high-impact claims before synthesis) ---
-  onProgress("Adversarial review (devil's advocate)...");
-  const criticalReview = await runAdversarialReview(intent, repoAnalyses, moduleAnalyses, deps.claudeMd);
-
-  // --- Phase 6: synthesis ---
-  onProgress('Synthesizing the final report...');
-  const finalReport = await synthesizeReport(intent, repoAnalyses, moduleAnalyses, deps.claudeMd, inspiration, criticalReview);
-
-  // --- Phase 7: write documents (rootCopy only in real mode) ---
-  onProgress('Writing documents...');
-  const dir = createProjectDir();
-  writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport, rootCopy: !dry });
-
-  onProgress(`Done. Output in ${dir}`);
-  return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport };
 }
 
 // --- main block: argv parsing (--idea/--dry-run/--resume) ---

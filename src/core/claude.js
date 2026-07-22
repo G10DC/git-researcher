@@ -54,6 +54,52 @@ async function ensureBinaryAvailable(spawnFn) {
   probeState = 'ok';
 }
 
+let chronicleInstance = null;
+async function getChronicle() {
+  if (chronicleInstance) return chronicleInstance;
+  try {
+    const { Chronicle } = await import('../../../chronicle/lib/chronicle.js');
+    chronicleInstance = new Chronicle();
+  } catch {
+    chronicleInstance = { compressLog: (t) => t };
+  }
+  return chronicleInstance;
+}
+
+async function callGeminiFallback(prompt, systemPrompt) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Gemini API key not found in process.env.GEMINI_API_KEY');
+  }
+  const model = 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{
+      parts: [{ text: prompt }]
+    }]
+  };
+  if (systemPrompt) {
+    body.systemInstruction = {
+      parts: [{ text: systemPrompt }]
+    };
+  }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API failed: ${response.status} - ${errText}`);
+  }
+  const json = await response.json();
+  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    throw new Error('Gemini API returned an empty response');
+  }
+  return text;
+}
+
 /**
  * Runs a prompt on the CLI runner service in headless mode and returns stdout.
  * @param {string} prompt
@@ -70,8 +116,18 @@ export async function runClaude(
   cwd = process.cwd(),
   deps = {}
 ) {
+  const chron = await getChronicle();
+  const cleanPrompt = chron.compressLog(prompt);
   const spawnFn = deps.spawn || realSpawn;
-  await ensureBinaryAvailable(spawnFn);
+
+  try {
+    await ensureBinaryAvailable(spawnFn);
+  } catch (err) {
+    if (process.env.GEMINI_API_KEY) {
+      return callGeminiFallback(cleanPrompt, systemPrompt);
+    }
+    throw err;
+  }
 
   return new Promise((resolve, reject) => {
     const args = ['-p', '--model', 'sonnet', '--no-session-persistence'];
@@ -89,13 +145,19 @@ export async function runClaude(
       } catch {
         /* noop */
       }
-      reject(new ClaudeError('CLAUDE_TIMEOUT'));
+      if (process.env.GEMINI_API_KEY) {
+        callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+          reject(new ClaudeError('CLAUDE_TIMEOUT'));
+        });
+      } else {
+        reject(new ClaudeError('CLAUDE_TIMEOUT'));
+      }
     }, timeoutMs);
 
     let stdout = '';
     let stderr = '';
 
-    child.stdin.write(prompt + '\n');
+    child.stdin.write(cleanPrompt + '\n');
     child.stdin.end();
 
     child.stdout.on('data', (data) => {
@@ -107,15 +169,33 @@ export async function runClaude(
 
     child.on('error', (err) => {
       clearTimeout(timer);
-      reject(new ClaudeError(`spawn failed: ${err.message}`, { cause: err }));
+      if (process.env.GEMINI_API_KEY) {
+        callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+          reject(new ClaudeError(`spawn failed: ${err.message}`, { cause: err }));
+        });
+      } else {
+        reject(new ClaudeError(`spawn failed: ${err.message}`, { cause: err }));
+      }
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === null) {
-        reject(new ClaudeError('CLAUDE_TIMEOUT'));
+        if (process.env.GEMINI_API_KEY) {
+          callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+            reject(new ClaudeError('CLAUDE_TIMEOUT'));
+          });
+        } else {
+          reject(new ClaudeError('CLAUDE_TIMEOUT'));
+        }
       } else if (code !== 0) {
-        reject(new ClaudeError(`Service process exited with code ${code}. stderr: ${stderr.slice(0, 300)}`));
+        if (process.env.GEMINI_API_KEY) {
+          callGeminiFallback(cleanPrompt, systemPrompt).then(resolve).catch(() => {
+            reject(new ClaudeError(`Service process exited with code ${code}. stderr: ${stderr.slice(0, 300)}`));
+          });
+        } else {
+          reject(new ClaudeError(`Service process exited with code ${code}. stderr: ${stderr.slice(0, 300)}`));
+        }
       } else {
         resolve(stdout);
       }
