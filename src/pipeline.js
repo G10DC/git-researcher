@@ -41,7 +41,8 @@ async function getSentinel() {
         'registry.npmjs.org',
         'api.stackexchange.com',
         'api.openalex.org',
-        'generativelanguage.googleapis.com'
+        'generativelanguage.googleapis.com',
+        'openrouter.ai'
       ],
       scanSecrets: true,
       scanPII: true
@@ -58,134 +59,108 @@ async function getSentinel() {
  */
 export async function tryResume() {
   try {
-    const root = path.join(process.cwd(), config.PATH_PROJECTS);
-    if (!fs.existsSync(root)) return null;
-    const dirs = fs.readdirSync(root).filter((d) => /^\d{8}_\d{6}$/.test(d)).sort();
-    const last = dirs[dirs.length - 1];
-    if (!last) return null;
-    const dir = path.join(root, last);
-    const candFile = path.join(dir, '2_repo_candidates.json');
-    const intentFile = path.join(dir, '1_intent_decomposition.json');
-    if (!fs.existsSync(candFile) || !fs.existsSync(intentFile)) return null;
-    const candidatesDoc = JSON.parse(fs.readFileSync(candFile, 'utf-8'));
-    const intent = JSON.parse(fs.readFileSync(intentFile, 'utf-8'));
-    const ranked = candidatesDoc.topN || [];
-    if (!Array.isArray(ranked) || ranked.length === 0) return null;
-    return { resumeDir: dir, intent, candidates: candidatesDoc.candidates || [], ranked };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Multi-source inspiration fan-out: queries independent sources (HN, npm, SO, papers)
- * in parallel and collects top-K results per source. A failing source degrades to []
- * (fail non-fatal), never blocking the pipeline.
- * @param {Object} intent
- * @param {{hn?:Function,npm?:Function,so?:Function,papers?:Function}} [deps]
- * @returns {Promise<{hn:Array,npm:Array,so:Array,papers:Array}>}
- */
-export async function gatherInspiration(intent, deps = {}) {
-  const sources = [
-    ['hn', deps.hn || searchHn],
-    ['npm', deps.npm || searchNpm],
-    ['so', deps.so || searchSo],
-    ['papers', deps.papers || searchPapers],
-  ];
-  const out = { hn: [], npm: [], so: [], papers: [] };
-  await runPool(
-    sources,
-    async ([key, fn]) => {
+    const dirs = fs.readdirSync(process.cwd())
+      .filter(f => f.startsWith('project_') && fs.statSync(f).isDirectory())
+      .sort((a, b) => b.localeCompare(a));
+    for (const d of dirs) {
       try {
-        out[key] = await fn(intent);
-      } catch (e) {
-        console.warn(`⚠️ Inspiration source '${key}' failed: ${e.message}`);
-        out[key] = [];
+        const intent = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'intent.json'), 'utf8'));
+        const candidates = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'candidates.json'), 'utf8'));
+        const ranked = JSON.parse(fs.readFileSync(path.join(d, 'intermediates', 'ranked.json'), 'utf8'));
+        return { resumeDir: d, intent, candidates, ranked };
+      } catch {
+        /* skip corrupt folder */
       }
-    },
-    sources.length
-  );
-  return out;
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
 }
 
 /**
- * Builds the injected dependencies for each phase (mocks in dryRun, real otherwise).
+ * Builds standard parameter overrides based on mode.
  * @param {boolean} dry
- * @param {Object|null} mocks
- * @returns {{intent:Object,search:Object,enrich:Object,claudeMd:Object,inspiration:Object,cascade:Object}}
+ * @param {Object} [mocks]
+ * @returns {Object}
  */
 function buildPhaseDeps(dry, mocks) {
-  if (!dry) {
+  if (dry && mocks) {
     return {
-      intent: {},
-      search: {},
-      enrich: {},
-      claudeMd: { fetchIssues: fetchOpenIssues },
-      inspiration: {},
-      cascade: {},
+      intent: { runClaudeJSON: async () => mocks.intent },
+      enrich: { getPage: async () => mocks.githubHtml },
+      claudeMd: { runClaude: async () => mocks.repoAnalysisMd },
+      cascade: { runClaudeJSON: async () => mocks.cascadeJson },
+      inspiration: { fetchImpl: async () => mocks.inspirationHtml }
     };
   }
   return {
-    intent: { runClaudeJSONWithRetry: mocks.mockIntent },
-    search: { fetchImpl: mocks.mockFetch, cache: NOOP_CACHE },
-    enrich: { getPage: mocks.mockGetPage, cache: NOOP_CACHE },
-    claudeMd: { runClaude: mocks.mockClaudeMd, fetchIssues: mocks.mockFetchIssues },
-    inspiration: { hn: mocks.mockHn, npm: mocks.mockNpm, so: mocks.mockSo, papers: mocks.mockPapers },
-    cascade: { runClaude: mocks.mockClaudeMd, runClaudeJSONWithRetry: mocks.mockModules },
+    intent: {},
+    enrich: {},
+    claudeMd: {},
+    cascade: {},
+    inspiration: {}
   };
 }
 
 /**
- * Applies the GitHub Search API fallback if DDG did not cover TOP_N_REPOS (real runs only).
- * @param {Object} intent
- * @param {Array} candidates
- * @param {boolean} dry
- * @param {(m:string)=>void} onProgress
- */
-async function applyApiFallback(intent, candidates, dry, onProgress) {
-  if (dry || !config.GITHUB_API_DISCOVERY_FALLBACK || candidates.length >= config.TOP_N_REPOS) return;
-  try {
-    const { fallbackDiscover } = await import('./discovery/githubApiFallback.js');
-    const extra = await fallbackDiscover(intent);
-    const seen = new Set(candidates.map((c) => c.fullName));
-    for (const c of extra) {
-      if (!seen.has(c.fullName)) { candidates.push(c); seen.add(c.fullName); }
-    }
-    onProgress(`GitHub API fallback: +${extra.length} candidates`);
-  } catch (e) {
-    console.warn(`⚠️ GitHub API fallback unavailable: ${e.message}`);
-  }
-}
-
-/**
- * Phases 2-3: discovery (DDG + optional API fallback) -> per-keyword pre-rank -> enrich -> per-keyword rank.
- * @param {Object} intent
- * @param {boolean} dry
- * @param {Object} deps
- * @param {(m:string)=>void} onProgress
- * @returns {Promise<{candidates:Array,ranked:Array}>}
+ * Executes Phase 2 (discovery) and Phase 3 (ranker).
  */
 async function discoverAndRank(intent, dry, deps, onProgress) {
-  onProgress('Searching repositories via DuckDuckGo...');
-  const candidates = await searchRepos(intent, deps.search);
-  await applyApiFallback(intent, candidates, dry, onProgress);
-
-  onProgress(`Pre-ranking ${candidates.length} candidates (per-keyword)...`);
-  const preRanked = preRank(candidates, intent);
-  // Broaden coverage at the enrichment stage: up to ENRICH_PER_KEYWORD per keyword...
-  const toEnrich = takePerKeyword(preRanked, intent.keywords || [], config.ENRICH_PER_KEYWORD);
-  // ...then top up to MAX_CANDIDATES with the best remaining (safety net for empty-keyword SERPs).
-  const seen = new Set(toEnrich.map((c) => c.fullName));
-  for (const c of preRanked) {
-    if (toEnrich.length >= config.MAX_CANDIDATES) break;
-    if (!seen.has(c.fullName)) { toEnrich.push(c); seen.add(c.fullName); }
+  let candidates = [];
+  if (dry) {
+    candidates = deps.inspiration ? [] : [];
+  } else {
+    onProgress('Running parallel multi-source discovery...');
+    const searchTasks = (intent.keywords || []).map(kw => {
+      return searchRepos(kw, deps.discovery)
+        .catch(err => {
+          console.warn(`⚠️ Discovery failed for '${kw}': ${err.message}`);
+          return [];
+        });
+    });
+    const searchResults = await Promise.all(searchTasks);
+    candidates = searchResults.flat();
   }
 
-  onProgress(`Enriching ${toEnrich.length} candidates...`);
+  if (!candidates.length && !dry) {
+    onProgress('No candidates found. Trying GitHub Search API fallback...');
+    try {
+      const { fallbackDiscover } = await import('./discovery/githubApiFallback.js');
+      candidates = await fallbackDiscover(intent);
+    } catch (err) {
+      console.warn(`⚠️ GitHub Search API fallback failed: ${err.message}`);
+    }
+  }
+
+  onProgress(`Discovered ${candidates.length} unique candidates. Pre-ranking...`);
+  const preRanked = preRank(candidates, intent);
+  const toEnrich = takePerKeyword(preRanked, intent);
+
+  onProgress(`Enriching top ${toEnrich.length} repositories...`);
   const enriched = await enrichRepos(toEnrich, deps.enrich);
   const ranked = rankRepos(enriched, intent);
   onProgress(`Top-${ranked.length} repos selected (per-keyword coverage).`);
   return { candidates, ranked };
+}
+
+/**
+ * Multi-source inspiration fan-out.
+ */
+async function gatherInspiration(intent, deps = {}) {
+  const tasks = [
+    searchHn(intent, deps).catch(err => { console.warn(`⚠️ HN failed: ${err.message}`); return []; }),
+    searchNpm(intent, deps).catch(err => { console.warn(`⚠️ npm failed: ${err.message}`); return []; }),
+    searchSo(intent, deps).catch(err => { console.warn(`⚠️ StackOverflow failed: ${err.message}`); return []; }),
+    searchPapers(intent, deps).catch(err => { console.warn(`⚠️ OpenAlex failed: ${err.message}`); return []; })
+  ];
+  const results = await Promise.all(tasks);
+  return {
+    hn: results[0],
+    npm: results[1],
+    so: results[2],
+    papers: results[3]
+  };
 }
 
 /**
@@ -259,15 +234,18 @@ export async function runPipeline(idea, options = {}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   const ideaIdx = args.indexOf('--idea');
-  const idea = ideaIdx >= 0 && args[ideaIdx + 1] ? args[ideaIdx + 1] : '';
+  if (ideaIdx === -1) {
+    console.error('Usage: node src/pipeline.js --idea "<software idea>" [--dry-run] [--resume]');
+    process.exit(1);
+  }
+  const idea = args[ideaIdx + 1];
   const dryRun = args.includes('--dry-run');
   const resume = args.includes('--resume');
-  const finalIdea = idea || 'rust vector database demo';
-  console.log(`▶ runPipeline (dryRun=${dryRun}, resume=${resume}) idea="${finalIdea}"`);
-  runPipeline(finalIdea, { dryRun, resume, onProgress: (m) => console.log('  …' + m) })
-    .then((r) => console.log(`✔ done -> ${r.dir}`))
-    .catch((e) => {
-      console.error('✖ Pipeline error:', e);
+
+  console.log(`▶ runPipeline (dryRun=${dryRun}, resume=${resume}) idea="${idea}"`);
+  runPipeline(idea, { dryRun, resume, onProgress: (m) => console.log(`  …${m}`) })
+    .catch(err => {
+      console.error(`\n✖ Pipeline error: ${err.stack || err.message}`);
       process.exit(1);
     });
 }
