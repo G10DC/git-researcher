@@ -11,7 +11,7 @@ export function writeHtmlReport(projectDir, intent, repos, summaryMarkdown) {
     <tr>
       <td><strong>${escapeHtml(r.name || r.repo)}</strong></td>
       <td>⭐ ${r.stars || 0}</td>
-      <td>${escapeHtml(r.license || 'N/D')}</td>
+      <td>${escapeHtml(r.license || 'N/A')}</td>
       <td><a href="${escapeHtml(r.url)}" target="_blank">View Repo</a></td>
     </tr>
   `).join('');
