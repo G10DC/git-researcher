@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dry": "node src/pipeline.js --idea 'rust vector database demo' --dry-run",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/*.test.js",
     "coverage": "node --test --experimental-test-coverage \"tests/**/*.test.js\"",
     "lint": "eslint src tests index.js"
   },
