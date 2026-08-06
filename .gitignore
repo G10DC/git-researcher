@@ -44,3 +44,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Enforced by G10DC Pruning
+.ast-cache.json
