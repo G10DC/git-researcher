@@ -13,15 +13,14 @@ A terminal tool and agent pipeline that discovers and analyzes relevant GitHub r
 - **Synthesis**: Produces structured analysis documents, architecture insights, and final reports.
 
 ## Execution
-Run from `C:\Users\GdC\.gemini\config\skills\git-researcher`:
+Run from the repository root directory:
 ```bash
 node src/pipeline.js --idea "<idea>"
 ```
 
-
 ---
 
-## ⚡ Spark Breakthrough Enhancement
+## Spark Breakthrough Enhancement
 
 - **Feature**: **Autonomous Open-Source Intelligence Hub**
 - **Description**: Multi-source GitHub dorking + HTML interactive dashboard exporter.
