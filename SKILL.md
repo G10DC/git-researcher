@@ -26,3 +26,13 @@ node src/pipeline.js --idea "<idea>"
 - **Description**: Multi-source GitHub dorking + HTML interactive dashboard exporter.
 - **Synergy**: Integrated with `spark` (ideation) & `artisan` (dashboard UI).
 - **Framework**: Applied via the `spark` 4-Lens Lateral Ideation Engine.
+
+
+## When to use
+
+- Primary domain workflow execution as specified in frontmatter description.
+
+
+## When NOT to use
+
+- Tasks outside declared skill scope or handled by specialized sibling skills.
