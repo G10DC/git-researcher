@@ -3,6 +3,10 @@
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Runs the spark engine on a discovered repository concept.
@@ -11,8 +15,9 @@ import path from 'node:path';
  */
 export async function runSparkIdeation(concept) {
   return new Promise((resolve) => {
-    const pythonBin = 'python';
-    const ideateScript = r'C:\Users\GdC\Desktop\skills_repo\spark\scripts\ideate.py';
+    const pythonBin = process.env.SPARK_PYTHON || 'python';
+    const ideateScript = process.env.SPARK_IDEATE_SCRIPT
+      || path.resolve(__dirname, '..', '..', '..', 'spark', 'scripts', 'ideate.py');
 
     const proc = spawn(pythonBin, [ideateScript, concept], { shell: true });
     let output = '';

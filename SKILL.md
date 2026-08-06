@@ -17,3 +17,13 @@ Run from `C:\Users\GdC\.gemini\config\skills\git-researcher`:
 ```bash
 node src/pipeline.js --idea "<idea>"
 ```
+
+
+---
+
+## ⚡ Spark Breakthrough Enhancement
+
+- **Feature**: **Autonomous Open-Source Intelligence Hub**
+- **Description**: Multi-source GitHub dorking + HTML interactive dashboard exporter.
+- **Synergy**: Integrated with `spark` (ideation) & `artisan` (dashboard UI).
+- **Framework**: Applied via the `spark` 4-Lens Lateral Ideation Engine.

@@ -11,7 +11,11 @@ export function writeHtmlReport(projectDir, intent, repos, summaryMarkdown) {
     <tr>
       <td><strong>${escapeHtml(r.name || r.repo)}</strong></td>
       <td>⭐ ${r.stars || 0}</td>
+<<<<<<< HEAD
       <td>${escapeHtml(r.license || 'N/A')}</td>
+=======
+      <td>${escapeHtml(r.license || 'N/D')}</td>
+>>>>>>> 7874077 (feat(spark): integrate spark breakthrough enhancements into git-researcher)
       <td><a href="${escapeHtml(r.url)}" target="_blank">View Repo</a></td>
     </tr>
   `).join('');
