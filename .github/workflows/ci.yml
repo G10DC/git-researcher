@@ -10,20 +10,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate SKILL.md against g10dc canon
+        run: node .github/validate-skill.mjs .
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install dependencies
         run: |
           if [ -f package.json ]; then
-            npm install --ignore-scripts || true
+            npm install --ignore-scripts
           else
             echo "No package.json found, skipping npm install"
           fi
       - name: Run tests
         run: |
           if [ -f package.json ]; then
-            npm test || true
+            npm test
           else
             echo "No package.json found, skipping tests"
           fi

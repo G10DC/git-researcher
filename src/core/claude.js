@@ -134,7 +134,7 @@ async function callGeminiFallback(prompt, systemPrompt) {
     throw new Error('Gemini API key not found in process.env.GEMINI_API_KEY');
   }
   const model = 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const body = {
     contents: [{
       parts: [{ text: prompt }]
@@ -147,7 +147,7 @@ async function callGeminiFallback(prompt, systemPrompt) {
   }
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body)
   });
   if (!response.ok) {

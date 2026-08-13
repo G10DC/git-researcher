@@ -1,6 +1,7 @@
 ---
 name: git-researcher
-description: Given a software idea, discovers and analyzes relevant GitHub repositories via a cascade of specialized analysis agents, producing structured analysis documents and a final report. Activate when researching existing GitHub projects, analyzing codebase architecture, or comparing open-source solutions for a new software idea.
+status: implemented
+description: Given a software idea, discovers and analyzes relevant GitHub repositories via a cascade of specialized analysis agents, producing structured analysis documents and a final report. Use when researching existing GitHub projects or comparing open-source solutions for a new idea. Never run it on a vague, unbounded idea -- the cascade has no request cap and can multiply API calls; never trust scraped search results as ground truth.
 ---
 
 # GitResearcher
@@ -18,21 +19,17 @@ Run from the repository root directory:
 node src/pipeline.js --idea "<idea>"
 ```
 
----
-
-## Spark Breakthrough Enhancement
-
-- **Feature**: **Autonomous Open-Source Intelligence Hub**
-- **Description**: Multi-source GitHub dorking + HTML interactive dashboard exporter.
-- **Synergy**: Integrated with `spark` (ideation) & `artisan` (dashboard UI).
-- **Framework**: Applied via the `spark` 4-Lens Lateral Ideation Engine.
-
-
 ## When to use
 
-- Primary domain workflow execution as specified in frontmatter description.
-
+- Given a software idea or problem statement, discovering and analyzing relevant existing GitHub
+  projects before building something from scratch.
+- Comparing multiple open-source solutions to the same problem across architecture, maturity,
+  and maintenance activity.
 
 ## When NOT to use
 
-- Tasks outside declared skill scope or handled by specialized sibling skills.
+- **The idea is too vague to bound the search** — the cascade has no built-in request budget, so
+  a vague query can multiply discovery/analysis API calls; narrow the idea first.
+- **You need ground-truth data from GitHub's API, not scraped search results** — discovery
+  sources include DuckDuckGo/HN/SO HTML scraping (`src/discovery/`), which breaks silently when
+  target markup changes; treat results as leads to verify, not verified facts.

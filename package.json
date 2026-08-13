@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dry": "node src/pipeline.js --idea 'rust vector database demo' --dry-run",
-    "test": "node --test test/*.test.js tests/*.test.js || true",
+    "test": "node --test \"test/**/*.test.{js,mjs,cjs}\" \"tests/**/*.test.{js,mjs,cjs}\"",
     "coverage": "node --test --experimental-test-coverage \"tests/**/*.test.js\"",
     "lint": "eslint src tests index.js"
   },
@@ -21,5 +21,8 @@
     "@eslint/js": "^9.0.0",
     "eslint": "^9.0.0",
     "globals": "^15.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
