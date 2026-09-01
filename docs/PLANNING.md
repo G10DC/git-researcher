@@ -13,8 +13,8 @@ graph TD
     Intent --> Search["DuckDuckGo & GitHub Search Engine"]
     Search --> Ranker["Pre-Ranker & Star Filter"]
     Ranker --> Cascade["Cascade Analysis & Critiques"]
-    Cascade --> Spark["spark Ideation Engine"]
-    Spark --> Writer["Markdown & HTML Report Writer"]
+    Cascade --> Adversarial["Adversarial Review"]
+    Adversarial --> Writer["Markdown & HTML Report Writer"]
 ```
 
 ### Stage 1: Intent Extraction & Search
@@ -23,8 +23,15 @@ Extracts search intents, dorks, and query terms to search GitHub repositories, S
 ### Stage 2: Pre-Ranking & Enrichment
 Sorts discovered repositories by star counts, activity freshness, and minimum star thresholds.
 
-### Stage 3: Cascade Analysis & Spark Ideation
-Applies multi-lens code critiques, adversarial reviews, and integrates the `spark` 4-lens lateral ideation engine.
+### Stage 3: Cascade Analysis & Adversarial Review
+Applies multi-lens code critiques (Archaeologist + Auditor per repo, specialists per module),
+then a single devil's-advocate pass over the result before synthesis.
+
+This stage once claimed to integrate the `spark` 4-lens ideation engine. It never did:
+`sparkIntegrator.js` was imported by nothing, and when the spark script was absent it
+resolved with a hardcoded "blueprint" instead of failing. It has been removed rather
+than wired, because a stage that invents its own output on failure is worse than a
+missing stage.
 
 ### Stage 4: Markdown & HTML Dashboard Exporter
 Persists findings into human-readable Markdown reports and interactive HTML dashboards.

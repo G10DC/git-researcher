@@ -19,19 +19,52 @@ const SYSTEM_PROMPT =
  * @param {{runClaude?:Function}} [deps]
  * @returns {Promise<string>} markdown critical review (never throws)
  */
+/** An entry is usable material only if it is an analysis and not an error string. */
+const usable = (x) => !!x && !String(x.analysis).startsWith('⚠️');
+
+/** `- name (role): first 400 chars` for each usable entry. */
+function digest(entries, nameOf, defaultRole) {
+  return entries
+    .map((e) => `- ${nameOf(e)} (${e.role || defaultRole}): ${String(e.analysis).replace(/\s+/g, ' ').slice(0, 400)}`)
+    .join('\n');
+}
+
+/**
+ * States what this review did and did not see.
+ *
+ * A failed analysis used to be filtered out and never mentioned again: with eight of
+ * ten repositories failing, the reviewer saw two and said nothing about the eight, so
+ * "nothing was wrong" and "nothing was looked at" reached the report identically.
+ * Failures stay out of the material to critique -- an error string is not a claim --
+ * but they are counted and named, and the truncation is declared.
+ */
+export function buildCoverageNote(repoAnalyses, moduleAnalyses) {
+  const repos = repoAnalyses || [];
+  const mods = moduleAnalyses || [];
+  const failedRepos = repos.filter((r) => r && !usable(r)).map((r) => r.repo);
+  const failedMods = mods.filter((m) => m && !usable(m)).map((m) => m.module);
+  return [
+    `Repository analyses: ${repos.filter(usable).length} usable of ${repos.length}.`,
+    failedRepos.length ? `FAILED and therefore NOT reviewed: ${failedRepos.join(', ')}.` : null,
+    `Module analyses: ${mods.filter(usable).length} usable of ${mods.length}.`,
+    failedMods.length ? `FAILED and therefore NOT reviewed: ${failedMods.join(', ')}.` : null,
+    'Each entry below is truncated to 400 characters, and the sources they were derived',
+    'from are not in this context: absence of a contradiction here is not evidence of',
+    'correctness. Treat coverage gaps as findings in their own right.'
+  ].filter(Boolean).join('\n');
+}
+
 export async function runAdversarialReview(intent, repoAnalyses, moduleAnalyses, deps = {}) {
   const run = deps.runClaude || defaultRun;
 
-  const repoDigest = (repoAnalyses || [])
-    .filter((r) => r && !String(r.analysis).startsWith('⚠️'))
-    .map((r) => `- ${r.repo} (${r.role || 'analysis'}): ${String(r.analysis).replace(/\s+/g, ' ').slice(0, 400)}`)
-    .join('\n');
-  const modDigest = (moduleAnalyses || [])
-    .filter((m) => m && !String(m.analysis).startsWith('⚠️'))
-    .map((m) => `- ${m.module} (${m.role || 'specialist'}): ${String(m.analysis).replace(/\s+/g, ' ').slice(0, 400)}`)
-    .join('\n');
+  const repoDigest = digest((repoAnalyses || []).filter(usable), (r) => r.repo, 'analysis');
+  const modDigest = digest((moduleAnalyses || []).filter(usable), (m) => m.module, 'specialist');
+  const coverage = buildCoverageNote(repoAnalyses, moduleAnalyses);
 
   const prompt = `Challenge the following analyses for the project "${intent.project_name || ''}" (${intent.description || ''}).
+
+## Coverage of this review
+${coverage}
 
 ## Repository analyses
 ${repoDigest || '(no repository analyzed)'}

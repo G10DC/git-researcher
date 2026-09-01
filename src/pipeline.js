@@ -1,6 +1,7 @@
 // src/pipeline.js
 // End-to-end orchestrator. Wires the core/discovery/analysis/io/testing packages.
-// dryRun: mock DI + NOOP_CACHE; resume restarts from saved intermediates; rootCopy only in real runs.
+// dryRun: mock DI + NOOP_CACHE on every caching stage (so a dry run cannot write into
+// the cache a real run reads); resume restarts from saved intermediates; rootCopy only real.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -47,9 +48,28 @@ async function getSentinel() {
       scanSecrets: true,
       scanPII: true
     });
-  } catch {
-    sentinelInstance = { activate: () => {}, deactivate: () => {} };
+  } catch (err) {
+    // sentinel resolves from a sibling directory, so it is present in the installed
+    // skills layout and absent in a plain clone and in CI. The empty catch that used
+    // to live here replaced the egress allowlist with a no-op and said nothing: a
+    // boundary nobody crosses looks exactly like a boundary nobody breaches.
+    // Degrading is still allowed -- silently is not.
+    sentinelInstance = {
+      active: false,
+      reason: err.code || err.message,
+      activate: () => {},
+      deactivate: () => {}
+    };
+    if (!process.env.GR_SILENCE_SENTINEL_WARNING) {
+      console.warn(
+        '⚠️  Egress guard NOT active: sentinel could not be loaded from ' +
+        `../../sentinel/lib/sentinel.js (${sentinelInstance.reason}).\n` +
+        '   Outbound requests are unfiltered and no secret/PII scan runs for this session.\n' +
+        '   Install sentinel as a sibling directory, or set GR_SILENCE_SENTINEL_WARNING=1 to accept this.'
+      );
+    }
   }
+  if (sentinelInstance.active === undefined) sentinelInstance.active = true;
   return sentinelInstance;
 }
 
@@ -95,32 +115,48 @@ export async function tryResume() {
  * @param {Object} [mocks]
  * @returns {Object}
  */
-function buildPhaseDeps(dry, mocks) {
+export function buildPhaseDeps(dry, mocks) {
   if (dry && mocks) {
     return {
       intent: { 
         runClaudeJSON: async () => mocks.mockIntent(),
         runClaudeJSONWithRetry: async () => mocks.mockIntent()
       },
-      enrich: { getPage: mocks.mockGetPage },
-      claudeMd: { runClaude: async (prompt) => mocks.mockClaudeMd(prompt) },
-      cascade: { 
+      // NOOP_CACHE on every stage that caches. This is not tidiness: the cache key is
+      // makeKey('repo', fullName), with no mode in it, so a dry run used to write the
+      // fabricated pages from testing/mocks.js into the same .cache the real run reads.
+      // For CACHE_TTL_HOURS afterwards a real run got mock stars back, with no network
+      // call and _failed:false -- indistinguishable from a page scraped off github.com.
+      discovery: { cache: NOOP_CACHE },
+      enrich: { getPage: mocks.mockGetPage, cache: NOOP_CACHE },
+      // fetchIssues is explicit even in dry mode: its absence is what made the real
+      // runs quietly evidence-free, so the shape is stated in both branches now.
+      claudeMd: { runClaude: async (prompt) => mocks.mockClaudeMd(prompt), fetchIssues: async () => [] },
+      cascade: {
         runClaudeJSON: async () => mocks.mockModules(),
         runClaudeJSONWithRetry: async () => mocks.mockModules()
       },
-      inspiration: { 
+      inspiration: {
         fetchImpl: mocks.mockFetch,
         hn: mocks.mockHn,
         npm: mocks.mockNpm,
         so: mocks.mockSo,
-        papers: mocks.mockPapers
+        papers: mocks.mockPapers,
+        cache: NOOP_CACHE
       }
     };
   }
   return {
     intent: {},
+    discovery: {},
     enrich: {},
-    claudeMd: {},
+    // githubApiFallback exists "to ground analyses with real user pain points", and
+    // fetchOpenIssues was imported here and never handed to anyone. repoAnalyzer
+    // defaults fetchIssues to `async () => []`, so every real run rendered
+    // "(no recent open issues available)" while the prompt told the model to use the
+    // open issues as evidence for the Limitations section. Asking for evidence that
+    // was never supplied is how a confident invention gets produced.
+    claudeMd: { fetchIssues: fetchOpenIssues },
     cascade: {},
     inspiration: {}
   };

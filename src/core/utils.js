@@ -26,8 +26,23 @@ export function sanitizeScrapedContent(text, maxLen = 3000) {
   let cleaned = String(text)
     // Strip HTML/SVG tags
     .replace(/<[^>]*>/g, ' ')
-    // Neutralize common prompt injection directives
-    .replace(/\b(ignore\s+all\s+previous\s+instructions|system\s+prompt|overwrite\s+instructions)\b/gi, '[filtered]')
+    // Neutralize prompt-injection directives.
+    //
+    // BOUND, stated rather than implied: this is a denylist, and a denylist over natural
+    // language cannot be complete. It previously matched three exact phrases, so
+    // "disregard the above" or "forget prior directions" walked straight through. The
+    // patterns below are wider, but a paraphrase, another language or a homoglyph still
+    // passes. The real defence is that this text is delimited and labelled UNTRUSTED in
+    // the prompt (see repoAnalyzer) -- a channel boundary, not a string filter. Do not
+    // raise the trust placed in scraped content because this function exists.
+    .replace(
+      /\b(?:ignore|disregard|forget|override|overwrite|bypass|discard)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier|preceding|foregoing|system)\s*(?:instructions?|prompts?|rules?|directions?|context)?/gi,
+      '[filtered]'
+    )
+    .replace(/\b(?:system|developer)\s+(?:prompt|message|instruction)s?\b/gi, '[filtered]')
+    .replace(/\b(?:new|updated|revised)\s+instructions?\s*:/gi, '[filtered]')
+    .replace(/\byou\s+are\s+now\s+(?:a|an|the)\b/gi, '[filtered]')
+    .replace(/<\/?(?:system|assistant|user|instructions?)>/gi, '[filtered]')
     // Strip badge image markdown links e.g. [![...](...)]
     .replace(/\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, '')
     // Replace multiple newlines/spaces

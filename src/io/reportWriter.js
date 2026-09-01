@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getTimestamp } from '../core/utils.js';
 import { PATH_PROJECTS } from '../core/config.js';
+import { writeHtmlReport } from './htmlReportWriter.js';
 
 /** Sanitizes a string for use in a filename (lowercase, alphanumeric/_ only). */
 function sanitize(s) {
@@ -92,6 +93,11 @@ export function writeDocs(projectDir, payload) {
   write(projectDir, '7_critical_review.md', criticalReview);
 
   write(projectDir, 'final_report.md', finalReport || '');
+
+  // docs/PLANNING.md has always drawn an HTML report as a pipeline output. It was
+  // never called. It is now.
+  writeHtmlReport(projectDir, intent || {}, ranked || [], finalReport || '');
+
   if (rootCopy) {
     const rootPath = path.join(process.cwd(), 'architectural_report.md');
     const rootTmp = rootPath + '.tmp';

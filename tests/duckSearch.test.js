@@ -67,10 +67,23 @@ test('buildQueries builds single-keyword queries {q,kw}, MAX_KEYWORDS cap, no AN
   q.forEach((e) => assert.ok(e.q.startsWith('site:github.com ')));
 });
 
-test('parseSerp on a CAPTURED REAL SERP (skip if fixture missing)', { skip: !fs.existsSync(path.resolve('tests/fixtures/ddg_site_github.html')) }, () => {
-  const html = fs.readFileSync(path.resolve('tests/fixtures/ddg_site_github.html'), 'utf-8');
+// The fixture is a real DuckDuckGo response for `site:github.com vector database`,
+// captured through this module's own transport on 2026-09-01 and committed.
+//
+// This test used to carry `{ skip: !existsSync(fixture) }` while the fixture was never
+// tracked, so it was skipped in every checkout and in CI -- the one check that would
+// notice DuckDuckGo changing its markup, permanently not running, inside a suite that
+// reported green. A missing fixture is now a failure, not a silent pass.
+test('parseSerp on a captured real SERP', () => {
+  const fixture = path.resolve(import.meta.dirname, 'fixtures/ddg_site_github.html');
+  assert.ok(
+    fs.existsSync(fixture),
+    'tests/fixtures/ddg_site_github.html is missing. Recapture it: the parser is ' +
+    'otherwise only ever exercised against hand-written imitation markup.'
+  );
+  const html = fs.readFileSync(fixture, 'utf-8');
   const res = parseSerp(html);
-  assert.ok(res.length >= 1, 'the real SERP contains at least one github repo');
+  assert.ok(res.length >= 1, 'the real SERP yielded no github repo -- the markup may have changed');
   res.forEach((r) => assert.match(r.fullName, /^[^/]+\/[^/]+$/));
 });
 

@@ -162,9 +162,28 @@ async function callGeminiFallback(prompt, systemPrompt) {
   return text;
 }
 
-const isTestEnv = process.env.NODE_ENV === 'test' || 
-                  process.env.NODE_TEST_CONTEXT ||
-                  (process.argv && process.argv.some(arg => arg.includes('test') || arg.includes('tests')));
+// Detecting "are we under the test runner" by substring on argv matched any idea
+// containing `latest`, `fastest`, `contest`, `protest` or `greatest` -- all plausible
+// things to research -- and silently disabled the API fallback for them. Match the
+// runner, not the payload: an env var, `--test`, or an argv entry inside test/ or tests/.
+const TEST_PATH = /(^|[\\/])tests?[\\/]/;
+
+/**
+ * True when this process is the test runner -- not when the user's idea happens to
+ * contain the letters "test". Exported so the distinction is covered by a test.
+ * @param {string[]} [argv]
+ * @param {Object} [env]
+ * @returns {boolean}
+ */
+export function isRunningUnderTestRunner(argv = process.argv, env = process.env) {
+  if (env.NODE_ENV === 'test' || env.NODE_TEST_CONTEXT) return true;
+  if (!Array.isArray(argv)) return false;
+  // argv[0] is the node binary and may legitimately sit under a path containing
+  // "test"; the runner is identified by its flag or by the spec paths after it.
+  return argv.slice(1).some((arg) => arg === '--test' || TEST_PATH.test(String(arg)));
+}
+
+const isTestEnv = isRunningUnderTestRunner();
 
 async function handleFallback(prompt, systemPrompt) {
   if (isTestEnv) {
@@ -303,11 +322,14 @@ export async function runClaudeJSONWithRetry(prompt, systemPrompt = '', deps = {
   try {
     return await run(prompt, systemPrompt);
   } catch (err) {
-    // Optimized retry prompt: sends targeted correction request rather than duplicating prompt
+    // The correction MUST carry the original request. The CLI is spawned with
+    // --no-session-persistence and a fresh process per call, so nothing carries
+    // over: a correction that says "analyze the provided input" while providing no
+    // input cannot be answered, and whatever comes back is parsed and returned.
     const correction =
       `Your previous JSON output was invalid: ${err.message}.\n` +
-      `Original Schema Requirement: Please analyze the provided input and return ONLY valid JSON matching the specified schema.\n` +
-      `Return valid raw JSON now with no markdown fences or conversational text.`;
+      `Return valid raw JSON now, with no markdown fences and no conversational text.\n` +
+      `This is the original request, unchanged -- answer it again:\n\n${prompt}`;
     return await run(correction, systemPrompt);
   }
 }
