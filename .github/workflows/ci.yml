@@ -22,6 +22,19 @@ jobs:
           else
             echo "No package.json found, skipping npm install"
           fi
+      # scripts/check.mjs asserts that a module exports the names its callers expect, one
+      # module per invocation. It existed as a manual tool and CI never ran it -- which is
+      # how config.js came to be read for PER_KEYWORD_LIMIT, a constant it does not export.
+      - name: Import smoke on the core contracts
+        run: |
+          node scripts/check.mjs src/core/config.js TOP_N_REPOS MAX_CANDIDATES MAX_KEYWORDS POOL_SIZE PER_KEYWORD ENRICH_PER_KEYWORD MAX_LLM_CALLS MAX_HTTP_REQUESTS
+          node scripts/check.mjs src/core/budget.js createBudget NOOP_BUDGET rethrowIfBudget BudgetExceededError
+          node scripts/check.mjs src/core/egress.js guardFetch isAllowedUrl ALLOWED_HOSTS EgressDeniedError
+          node scripts/check.mjs src/pipeline.js runPipeline buildPhaseDeps discoverAndRank gatherInspiration
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run tests
         run: |
           if [ -f package.json ]; then

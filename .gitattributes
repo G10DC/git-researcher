@@ -1,0 +1,9 @@
+# Normalise line endings: the working tree keeps the platform convention, the committed
+# blobs stay LF. Without this, every file a tool wrote on Windows produced a "LF will be
+# replaced by CRLF" warning and risked whole-file diffs.
+* text=auto eol=lf
+
+# Fixtures are real captured payloads, compared byte-for-byte by the parser tests.
+# `binary` (-text -diff) is deliberately stronger than `-text`: the weaker form still let
+# git rewrite this file during a renormalise pass.
+tests/fixtures/** binary

@@ -313,12 +313,15 @@ test('the injected fetch counts against the run', async () => {
   const budget = createBudget({ maxHttpRequests: 5 });
   const deps = buildPhaseDeps(false, null, budget);
 
-  // a port nothing listens on: the connection is refused locally, no traffic leaves the
-  // machine, and the count happens before the request is attempted either way
-  await deps.discovery.fetchImpl('http://127.0.0.1:1/').catch(() => {});
+  // An undeclared host: the egress guard refuses it, so nothing leaves the machine, and
+  // the assertion covers the composition itself -- the counter runs first, the guard
+  // second. Counted and filtered are two concerns, and this is where they meet.
+  const { EgressDeniedError } = await import('../src/core/egress.js');
+
+  await assert.rejects(() => deps.discovery.fetchImpl('https://evil.example/x'), EgressDeniedError);
   assert.equal(budget.report().httpRequests, 1, 'the injected discovery fetch did not count');
 
-  await deps.inspiration.fetchImpl('http://127.0.0.1:1/').catch(() => {});
+  await assert.rejects(() => deps.inspiration.fetchImpl('https://evil.example/x'), EgressDeniedError);
   assert.equal(budget.report().httpRequests, 2, 'the injected inspiration fetch did not count');
 });
 

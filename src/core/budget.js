@@ -96,7 +96,10 @@ export function createBudget(limits = {}) {
    */
   const wrapFetch = (fetchImpl) => {
     const inner = fetchImpl || ((...a) => fetch(...a));
-    return (...args) => {
+    // async for the same reason as core/egress.guardFetch: fetch returns a promise, so a
+    // refusal must be a rejected promise rather than a synchronous throw past every
+    // `.catch()` the caller wrote.
+    return async (...args) => {
       countHttp();
       return inner(...args);
     };

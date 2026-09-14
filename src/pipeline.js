@@ -25,6 +25,7 @@ import { synthesizeReport } from './analysis/synthesizer.js';
 import { createProjectDir, writeDocs } from './io/reportWriter.js';
 import { createDryRunMocks } from './testing/mocks.js';
 import { createBudget, NOOP_BUDGET, rethrowIfBudget } from './core/budget.js';
+import { guardFetch, ALLOWED_HOSTS } from './core/egress.js';
 import { runClaude, runClaudeJSONWithRetry } from './core/claude.js';
 
 let sentinelInstance = null;
@@ -33,20 +34,9 @@ async function getSentinel() {
   try {
     const { SentinelGuard } = await import('../../sentinel/lib/sentinel.js');
     sentinelInstance = new SentinelGuard({
-      allowlist: [
-        'html.duckduckgo.com',
-        'lite.duckduckgo.com',
-        'duckduckgo.com',
-        'github.com',
-        'api.github.com',
-        'news.ycombinator.com',
-        'hn.algolia.com',
-        'registry.npmjs.org',
-        'api.stackexchange.com',
-        'api.openalex.org',
-        'generativelanguage.googleapis.com',
-        'openrouter.ai'
-      ],
+      // One list, in core/egress.js. It used to be written out here as well, and two
+      // copies of an allowlist drift without anything noticing which one is authoritative.
+      allowlist: [...ALLOWED_HOSTS],
       scanSecrets: true,
       scanPII: true
     });
@@ -154,8 +144,12 @@ export function buildPhaseDeps(dry, mocks, budget = NOOP_BUDGET) {
   const countedJSON = (...args) => { budget.countLlm(); return runClaudeJSONWithRetry(...args); };
 
   return {
+    // Counted and filtered: two separate concerns -- how much a run may spend, and where
+    // it may spend it. The egress guard is here rather than only in sentinel because
+    // sentinel resolves from a sibling directory that does not exist in a clone or in CI,
+    // which left every request on those machines unfiltered.
     intent: { runClaudeJSONWithRetry: countedJSON },
-    discovery: { fetchImpl: budget.wrapFetch() },
+    discovery: { fetchImpl: budget.wrapFetch(guardFetch()) },
     enrich: { getPage: async (url) => { budget.countHttp(); return fetchGithubPage(url); } },
     // githubApiFallback exists "to ground analyses with real user pain points", and
     // fetchOpenIssues was imported here and never handed to anyone. repoAnalyzer
@@ -173,7 +167,7 @@ export function buildPhaseDeps(dry, mocks, budget = NOOP_BUDGET) {
     //   repoEnricher.js:142 -> deps.getPage (NOT fetchImpl)
     claudeMd: { fetchIssues: fetchOpenIssues, runClaude: countedRun },
     cascade: { runClaude: countedRun, runClaudeJSONWithRetry: countedJSON },
-    inspiration: { fetchImpl: budget.wrapFetch() }
+    inspiration: { fetchImpl: budget.wrapFetch(guardFetch()) }
   };
 }
 

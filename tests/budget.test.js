@@ -81,7 +81,8 @@ test('wrapFetch refuses before the wrapped implementation is ever called', async
   await counted('https://example.com/a');
   assert.equal(called, 1);
 
-  assert.throws(() => counted('https://example.com/b'), BudgetExceededError);
+  // rejects, not throws: fetch returns a promise, so a refusal has to be a rejected one
+  await assert.rejects(() => counted('https://example.com/b'), BudgetExceededError);
   assert.equal(called, 1, 'the request was sent despite the ceiling');
 });
 

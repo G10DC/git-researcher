@@ -6,18 +6,23 @@ import { load } from 'cheerio';
 import { NAV_TIMEOUT_MS, REQUEST_DELAY_MS, MAX_RETRIES, DEFAULT_USER_AGENT } from '../core/config.js';
 import { withRetry, sleep } from '../core/utils.js';
 import { makeKey, DEFAULT_CACHE } from '../io/cache.js';
+import { isAllowedUrl as allowedByEgress } from '../core/egress.js';
 
-/** Domain allowlist for safe HTTP requests. */
-const ALLOWED_DOMAINS = ['github.com', 'raw.githubusercontent.com'];
+/** The hosts this module may reach: a narrowing of the shared list in core/egress.js,
+ *  not a second copy of it. Two allowlists drift, and the drift is invisible. */
+const ENRICHER_HOSTS = ['github.com', 'raw.githubusercontent.com'];
 
-/** Validates that a URL belongs to an allowed domain. */
+/**
+ * Validates that a URL belongs to an allowed host.
+ *
+ * Delegates to core/egress.js, which also refuses non-http schemes. One behaviour changes
+ * deliberately: the previous local version accepted any subdomain via
+ * `hostname.endsWith('.' + domain)`, so every `*.github.com` passed. That was not unsafe
+ * -- the leading dot cannot be suffixed around -- but this module fetches repository pages
+ * and raw READMEs and nothing else, so the narrower rule matches what it actually does.
+ */
 function isAllowedUrl(urlStr) {
-  try {
-    const parsed = new URL(urlStr);
-    return ALLOWED_DOMAINS.some((domain) => parsed.hostname === domain || parsed.hostname.endsWith('.' + domain));
-  } catch {
-    return false;
-  }
+  return allowedByEgress(urlStr, ENRICHER_HOSTS);
 }
 
 /** Normalizes counters like "1.2k" / "45.6k" / "1,234" into a number. */
