@@ -1,6 +1,6 @@
 {
   "name": "git-researcher",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "type": "module",
   "description": "Turns a software idea into structured analysis docs: discovers GitHub repos (DuckDuckGo+dorks) and gathers multi-source inspiration (HN, npm, Stack Overflow, papers), then synthesizes them with cascade analysis agents.",
   "license": "MIT",
