@@ -105,6 +105,53 @@ test('runClaudeJSONWithRetry does not retry if the first attempt succeeds', asyn
   assert.deepEqual(r, { ok: true });
 });
 
+/** spawnFn that answers the probe, the auth check, and the real call separately. */
+function spawnAuthAware(onArgs, authStdout = '{"loggedIn":true}') {
+  return (_cmd, args) => {
+    onArgs(args);
+    if (args.includes('--version')) return makeChild({ exitCode: 0 });
+    if (args[0] === 'auth') return makeChild({ stdout: authStdout });
+    return makeChild({ stdout: 'ok' });
+  };
+}
+
+test('the auth check asks `claude auth status`, never `claude status`', async () => {
+  _resetProbe();
+  const seen = [];
+  const r = await runClaude('p', 's', 5000, '.', { spawn: spawnAuthAware((a) => seen.push(a.join(' '))) });
+
+  assert.equal(r, 'ok');
+  assert.ok(seen.includes('auth status'), 'the auth check did not ask `claude auth status`');
+  // `claude status` is a different command: it prompts the MODEL for a prose summary of
+  // the working directory. It spent quota on every check, outlived the 4s timeout, and
+  // resolved false -- so every real run was diverted to the API fallback and died there
+  // on a 402 during intent extraction.
+  assert.ok(!seen.includes('status'), '`claude status` prompts the model and costs a request');
+});
+
+test('the auth verdict is cached: one probe per process, not one per call', async () => {
+  _resetProbe();
+  let authProbes = 0;
+  const spawn = spawnAuthAware((a) => { if (a[0] === 'auth') authProbes++; });
+
+  await runClaude('p1', 's', 5000, '.', { spawn });
+  await runClaude('p2', 's', 5000, '.', { spawn });
+
+  assert.equal(authProbes, 1, 'authState was declared and never assigned, so every call respawned a process');
+});
+
+test('_resetProbe clears the auth verdict as well as the binary probe', async () => {
+  _resetProbe();
+  let authProbes = 0;
+  const spawn = spawnAuthAware((a) => { if (a[0] === 'auth') authProbes++; });
+
+  await runClaude('p1', 's', 5000, '.', { spawn });
+  _resetProbe();
+  await runClaude('p2', 's', 5000, '.', { spawn });
+
+  assert.equal(authProbes, 2, 'a verdict from one test would decide the next');
+});
+
 test('runClaude appends CLAUDE_EXTRA_ARGS to the spawn args (determinism hook)', async () => {
   _resetProbe();
   const prev = process.env.CLAUDE_EXTRA_ARGS;

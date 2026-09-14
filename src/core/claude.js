@@ -62,30 +62,55 @@ async function getChronicle() {
 }
 
 let authState = 'unknown';
+
+/**
+ * Whether the CLI is signed in. Asks `claude auth status`, which answers with JSON and
+ * exits immediately.
+ *
+ * It used to ask `claude status`, which is a different command entirely: it prompts the
+ * MODEL for a prose summary of the working directory. So every check spent quota, took
+ * longer than the 4s timeout below, and resolved `false` -- and because the CLI was then
+ * judged signed out, every real run was diverted to the OpenRouter fallback. On an account
+ * with no credits that surfaced as `402 Insufficient credits` during intent extraction,
+ * which is as far as any real run ever got.
+ *
+ * The verdict is read from `loggedIn`, not from the absence of "Not signed in": a check
+ * that treats every unexpected output as success cannot fail closed.
+ */
 async function checkAuth(spawnFn) {
   if (authState !== 'unknown') return authState;
-  
-  return new Promise((resolve) => {
-    const child = spawnFn('claude', ['status'], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+  const result = await new Promise((resolve) => {
+    const child = spawnFn('claude', ['auth', 'status'], { stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     child.stdout.on('data', (d) => { output += d; });
     child.stderr.on('data', (d) => { output += d; });
-    
+
     const timer = setTimeout(() => {
-      try { child.kill('SIGKILL'); } catch {}
+      try { child.kill('SIGKILL'); } catch { /* noop */ }
       resolve(false);
     }, 4000);
-    
+
     child.on('close', () => {
       clearTimeout(timer);
-      const isLogged = !output.includes('Not signed in') && !output.includes('Not connected');
-      resolve(isLogged);
+      try {
+        resolve(JSON.parse(cleanJsonString(output)).loggedIn === true);
+      } catch {
+        // Older CLI versions answered in prose. Fall back to the textual reading rather
+        // than reporting a signed-in user as signed out.
+        resolve(/logged\s*in|signed\s*in/i.test(output) && !/not\s+(signed|logged|connected)/i.test(output));
+      }
     });
     child.on('error', () => {
       clearTimeout(timer);
       resolve(false);
     });
   });
+
+  // authState was declared and never assigned, so the cache above never hit and every
+  // call spawned another process.
+  authState = result;
+  return result;
 }
 
 async function callOpenRouterFallback(prompt, systemPrompt) {
@@ -189,11 +214,23 @@ async function handleFallback(prompt, systemPrompt) {
   if (isTestEnv) {
     throw new Error('Fallback disabled in test environment');
   }
-  if (process.env.OPENROUTER_API_KEY) {
-    return callOpenRouterFallback(prompt, systemPrompt);
+  // A chain, not a choice. Holding an OPENROUTER_API_KEY used to mean Gemini was never
+  // tried, so an account with no credits turned a 402 into a fatal error for the whole
+  // pipeline -- in a module that degrades almost everywhere else.
+  const errors = [];
+  for (const [name, key, call] of [
+    ['OpenRouter', process.env.OPENROUTER_API_KEY, callOpenRouterFallback],
+    ['Gemini', process.env.GEMINI_API_KEY, callGeminiFallback]
+  ]) {
+    if (!key) continue;
+    try {
+      return await call(prompt, systemPrompt);
+    } catch (err) {
+      errors.push(`${name}: ${err.message}`);
+    }
   }
-  if (process.env.GEMINI_API_KEY) {
-    return callGeminiFallback(prompt, systemPrompt);
+  if (errors.length) {
+    throw new ClaudeError(`every API fallback failed -- ${errors.join(' | ')}`);
   }
   throw new Error('No API fallback key available (OPENROUTER_API_KEY / GEMINI_API_KEY)');
 }
@@ -335,8 +372,13 @@ export async function runClaudeJSONWithRetry(prompt, systemPrompt = '', deps = {
 }
 
 /**
- * Resets the CLI probe state cache (used in tests).
+ * Resets the CLI probe caches (used in tests).
+ *
+ * `authState` is reset here too. It was declared and never assigned, so the auth cache
+ * never actually held anything and no test could notice its absence; now that it does
+ * hold, a verdict left over from one test would decide the next one.
  */
 export function _resetProbe() {
   probeState = 'unknown';
+  authState = 'unknown';
 }
