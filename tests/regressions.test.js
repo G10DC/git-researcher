@@ -227,6 +227,97 @@ test('every module under src/ is reachable from an entry point', () => {
   assert.deepEqual(orphans, [], `imported by nothing: ${orphans.join(', ')}`);
 });
 
+// --- 14: the spend ceiling must be consulted, not merely declared -----------------
+//
+// budget.test.js proves the module counts. It does NOT prove the pipeline uses it, and
+// the difference is the whole point: a ceiling nobody consults looks exactly like a
+// ceiling nobody reached. This is the same defect the comment at buildPhaseDeps records
+// for fetchOpenIssues -- imported, never handed to anyone, and silently absent for every
+// real run. So these assertions are on the exact keys each module reads.
+
+test('a real run injects the budget into every dependency that spends', async () => {
+  const { buildPhaseDeps } = await import('../src/pipeline.js');
+  const { createBudget } = await import('../src/core/budget.js');
+  const budget = createBudget({ maxLlmCalls: 5, maxHttpRequests: 5 });
+  const deps = buildPhaseDeps(false, null, budget);
+
+  assert.equal(typeof deps.intent.runClaudeJSONWithRetry, 'function', 'intentExtractor:23 reads this');
+  assert.equal(typeof deps.discovery.fetchImpl, 'function', 'duckSearch:120 reads this');
+  assert.equal(typeof deps.enrich.getPage, 'function', 'repoEnricher:142 reads getPage, NOT fetchImpl');
+  assert.equal(typeof deps.claudeMd.runClaude, 'function');
+  assert.equal(typeof deps.cascade.runClaude, 'function');
+  assert.equal(typeof deps.cascade.runClaudeJSONWithRetry, 'function');
+  assert.equal(typeof deps.inspiration.fetchImpl, 'function');
+  // the channel that was already wired must survive the new ones
+  assert.equal(typeof deps.claudeMd.fetchIssues, 'function');
+});
+
+test('the injected fetch counts against the run', async () => {
+  const { buildPhaseDeps } = await import('../src/pipeline.js');
+  const { createBudget } = await import('../src/core/budget.js');
+  const budget = createBudget({ maxHttpRequests: 5 });
+  const deps = buildPhaseDeps(false, null, budget);
+
+  // a port nothing listens on: the connection is refused locally, no traffic leaves the
+  // machine, and the count happens before the request is attempted either way
+  await deps.discovery.fetchImpl('http://127.0.0.1:1/').catch(() => {});
+  assert.equal(budget.report().httpRequests, 1, 'the injected discovery fetch did not count');
+
+  await deps.inspiration.fetchImpl('http://127.0.0.1:1/').catch(() => {});
+  assert.equal(budget.report().httpRequests, 2, 'the injected inspiration fetch did not count');
+});
+
+test('a dry run counts nothing, because it calls nothing', async () => {
+  const { buildPhaseDeps } = await import('../src/pipeline.js');
+  const { NOOP_BUDGET } = await import('../src/core/budget.js');
+  const deps = buildPhaseDeps(true, {
+    mockIntent: () => ({}), mockGetPage: async () => '', mockClaudeMd: async () => '',
+    mockModules: () => ({}), mockFetch: async () => ({ text: async () => '' }),
+    mockHn: async () => [], mockNpm: async () => [], mockSo: async () => [], mockPapers: async () => []
+  }, NOOP_BUDGET);
+  assert.equal(deps.enrich.cache, NOOP_CACHE, 'a dry run would write into the real cache');
+  assert.equal(NOOP_BUDGET.report().httpRequests, 0);
+});
+
+// --- 13: the real discovery branch must actually query its sources ----------------
+//
+// "nothing found" and "nothing looked at" are different states. searchRepos reads
+// intent.keywords; the pipeline was handing it a bare string, so buildQueries produced
+// zero queries, no request was ever sent, and the empty result was read as "no
+// candidates" -- which silently routed every real run through the API fallback.
+
+test('the real discovery branch sends at least one DuckDuckGo query', async () => {
+  const { discoverAndRank } = await import('../src/pipeline.js');
+  const urls = [];
+  const fetchImpl = async (url) => {
+    urls.push(String(url));
+    return { ok: true, status: 200, text: async () => '<html><body></body></html>' };
+  };
+
+  await discoverAndRank(
+    { keywords: ['vector database'], technologies: ['rust'] },
+    false, // the REAL branch, not the mocked one
+    {
+      discovery: { fetchImpl, cache: NOOP_CACHE },
+      enrich: { getPage: async () => '<html></html>', cache: NOOP_CACHE }
+    },
+    () => {}
+  );
+
+  assert.ok(
+    urls.some((u) => u.includes('duckduckgo')),
+    'zero DuckDuckGo requests: the discovery did not look, rather than not finding'
+  );
+});
+
+test('searchRepos is given the intent shape it reads, not a bare keyword', async () => {
+  const { buildQueries } = await import('../src/discovery/duckSearch.js');
+  assert.equal(buildQueries('vector database').length, 0,
+    'a bare string must stay unusable -- that is the bug, not the contract');
+  assert.ok(buildQueries({ keywords: ['vector database'] }).length > 0,
+    'the intent shape is what buildQueries reads');
+});
+
 // --- 12: the open-issues evidence channel must actually be wired ------------------
 
 test('a real run hands repoAnalyzer a way to fetch open issues', async () => {

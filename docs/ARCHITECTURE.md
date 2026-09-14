@@ -13,7 +13,7 @@ flowchart TD
     SEARCH -->|if empty/blocked + flag on| FALLBACK[discovery / githubApiFallback<br/>GitHub Search API]
     SEARCH --> PRERANK[discovery / ranker.preRank<br/>name + title + snippet]
     FALLBACK --> PRERANK
-    PRERANK --> ENRICH[discovery / repoEnricher<br/>puppeteer/cheerio on GitHub]
+    PRERANK --> ENRICH[discovery / repoEnricher<br/>native fetch + cheerio on GitHub]
     ENRICH --> RANK[discovery / ranker.rankRepos<br/>top-N, tiered scoring]
     RANK --> ANALYZE[analysis / repoAnalyzer<br/>Code Archaeologist + Auditor, 2 lenses/repo]
     ANALYZE --> CASCADE[analysis / cascadeOrchestrator<br/>modules + specialists, informed by repos]
@@ -130,5 +130,9 @@ mocks -> testability without network and without mocking ESM.
   + `formatInspiration` + `gatherInspiration`.
 - **Smoke e2e** (`dryRun`): whole pipeline with mocks.
 - **Real e2e** (manual): requires an authenticated `claude` CLI + DuckDuckGo + Chromium.
-- **Coverage**: 96.2% statements / 93.2% functions / 80.7% branch; the residual is real integration
-  code (CLI spawn, puppeteer browser launch, real-mode discovery).
+- **Coverage**: 90.9% lines / 81.0% functions / 68.2% branch, measured over `src/` only with
+  `node --test --experimental-test-coverage --test-coverage-include="src/**"`. The command is
+  quoted because the previous figures (96.2 / 93.2 / 80.7) could not be reproduced by any
+  invocation: a coverage number without the command that produced it is not a measurement.
+  The residual is real integration code (CLI spawn, real-mode discovery) plus the degraded
+  paths that no test exercises.

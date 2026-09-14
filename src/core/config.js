@@ -35,7 +35,7 @@ export const REQUEST_DELAY_MS = 1500;
 /** Timeout for the DuckDuckGo fetch via AbortController (ms). */
 export const FETCH_TIMEOUT_MS = 30000;
 
-/** Timeout for puppeteer page.goto on the GitHub enricher (ms). Distinct from FETCH_TIMEOUT_MS. */
+/** Timeout for native fetch on the GitHub enricher (ms). Distinct from FETCH_TIMEOUT_MS. */
 export const NAV_TIMEOUT_MS = 45000;
 
 /** Max attempts on a failed/empty request. */
@@ -103,3 +103,16 @@ export const PER_KEYWORD = 2;
 
 /** Candidates enriched per keyword (broad pool so the per-keyword ranker has material). */
 export const ENRICH_PER_KEYWORD = 5;
+
+// --- Per-run spend ceiling ---
+// SKILL.md warns that "the cascade has no built-in request budget". That warning was
+// attached to no mechanism, and it mattered less than it looked only because the
+// discovery was sending no query at all. Now that it does, the fan-out is real and
+// bounded here. A typical run measures ~18 model calls and ~40 HTTP requests: these
+// ceilings sit well above that, so they catch a runaway idea rather than a normal one.
+
+/** Model calls allowed in a single run. Exceeding it aborts the run rather than billing on. */
+export const MAX_LLM_CALLS = 40;
+
+/** HTTP requests allowed in a single run, across discovery, enrichment and inspiration. */
+export const MAX_HTTP_REQUESTS = 150;

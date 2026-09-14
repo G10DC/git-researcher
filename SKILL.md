@@ -31,5 +31,5 @@ node src/pipeline.js --idea "<idea>"
 - **The idea is too vague to bound the search** — the cascade has no built-in request budget, so
   a vague query can multiply discovery/analysis API calls; narrow the idea first.
 - **You need ground-truth data from GitHub's API, not scraped search results** — discovery
-  sources include DuckDuckGo/HN/SO HTML scraping (`src/discovery/`), which breaks silently when
+  sources include DuckDuckGo and GitHub repository page HTML scraping (`src/discovery/duckSearch.js`, `src/discovery/repoEnricher.js`), which breaks silently when
   target markup changes; treat results as leads to verify, not verified facts.

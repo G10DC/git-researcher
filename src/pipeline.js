@@ -12,7 +12,7 @@ import { NOOP_CACHE } from './io/cache.js';
 import { extractIntent } from './discovery/intentExtractor.js';
 import { searchRepos } from './discovery/duckSearch.js';
 import { preRank, rankRepos, takePerKeyword } from './discovery/ranker.js';
-import { enrichRepos } from './discovery/repoEnricher.js';
+import { enrichRepos, fetchGithubPage } from './discovery/repoEnricher.js';
 import { fetchOpenIssues } from './discovery/githubApiFallback.js';
 import { searchHn } from './discovery/hnSearch.js';
 import { searchNpm } from './discovery/npmSearch.js';
@@ -24,6 +24,8 @@ import { runAdversarialReview } from './analysis/adversarialReview.js';
 import { synthesizeReport } from './analysis/synthesizer.js';
 import { createProjectDir, writeDocs } from './io/reportWriter.js';
 import { createDryRunMocks } from './testing/mocks.js';
+import { createBudget, NOOP_BUDGET } from './core/budget.js';
+import { runClaude, runClaudeJSONWithRetry } from './core/claude.js';
 
 let sentinelInstance = null;
 async function getSentinel() {
@@ -115,7 +117,7 @@ export async function tryResume() {
  * @param {Object} [mocks]
  * @returns {Object}
  */
-export function buildPhaseDeps(dry, mocks) {
+export function buildPhaseDeps(dry, mocks, budget = NOOP_BUDGET) {
   if (dry && mocks) {
     return {
       intent: { 
@@ -146,26 +148,43 @@ export function buildPhaseDeps(dry, mocks) {
       }
     };
   }
+  // A model call and an HTTP request are counted at the only place both are certain to
+  // pass through: the dependency the module was already asking for.
+  const countedRun = (...args) => { budget.countLlm(); return runClaude(...args); };
+  const countedJSON = (...args) => { budget.countLlm(); return runClaudeJSONWithRetry(...args); };
+
   return {
-    intent: {},
-    discovery: {},
-    enrich: {},
+    intent: { runClaudeJSONWithRetry: countedJSON },
+    discovery: { fetchImpl: budget.wrapFetch() },
+    enrich: { getPage: async (url) => { budget.countHttp(); return fetchGithubPage(url); } },
     // githubApiFallback exists "to ground analyses with real user pain points", and
     // fetchOpenIssues was imported here and never handed to anyone. repoAnalyzer
     // defaults fetchIssues to `async () => []`, so every real run rendered
     // "(no recent open issues available)" while the prompt told the model to use the
     // open issues as evidence for the Limitations section. Asking for evidence that
     // was never supplied is how a confident invention gets produced.
-    claudeMd: { fetchIssues: fetchOpenIssues },
-    cascade: {},
-    inspiration: {}
+    // Every key below is one a module actually reads -- checked, not assumed. The same
+    // mistake as fetchOpenIssues above would be worse here: a ceiling nobody consults
+    // looks exactly like a ceiling nobody reached.
+    //   intentExtractor.js:23  -> deps.runClaudeJSONWithRetry
+    //   repoAnalyzer/cascade/adversarialReview/synthesizer -> deps.runClaude
+    //   cascadeOrchestrator.js:17 -> deps.runClaudeJSONWithRetry
+    //   duckSearch:120, hn/npm/so/paperSearch -> deps.fetchImpl
+    //   repoEnricher.js:142 -> deps.getPage (NOT fetchImpl)
+    claudeMd: { fetchIssues: fetchOpenIssues, runClaude: countedRun },
+    cascade: { runClaude: countedRun, runClaudeJSONWithRetry: countedJSON },
+    inspiration: { fetchImpl: budget.wrapFetch() }
   };
 }
 
 /**
  * Executes Phase 2 (discovery) and Phase 3 (ranker).
+ *
+ * Exported for the regression that covers the real branch. The dry branch below is
+ * reachable from the smoke test; the real one was reachable from nothing, which is how
+ * it kept passing a string where searchRepos reads `.keywords`.
  */
-async function discoverAndRank(intent, dry, deps, onProgress) {
+export async function discoverAndRank(intent, dry, deps, onProgress) {
   let candidates = [];
   if (dry) {
     onProgress('Running parallel multi-source discovery (mock)...');
@@ -181,7 +200,11 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
   } else {
     onProgress('Running parallel multi-source discovery...');
     const searchTasks = (intent.keywords || []).map(kw => {
-      return searchRepos(kw, deps.discovery)
+      // searchRepos/buildQueries read `.keywords` and `.technologies`. Handing them the
+      // bare string produced zero queries and an empty array, which the caller below
+      // read as "no candidates found" and routed into the API fallback -- so no real run
+      // ever sent a DuckDuckGo request. Covered by tests/regressions.test.js (13).
+      return searchRepos({ keywords: [kw], technologies: intent.technologies || [] }, deps.discovery)
         .catch(err => {
           console.warn(`⚠️ Discovery failed for '${kw}': ${err.message}`);
           return [];
@@ -192,18 +215,30 @@ async function discoverAndRank(intent, dry, deps, onProgress) {
   }
 
   if (!candidates.length && !dry) {
-    onProgress('No candidates found. Trying GitHub Search API fallback...');
-    try {
-      const { fallbackDiscover } = await import('./discovery/githubApiFallback.js');
-      candidates = await fallbackDiscover(intent);
-    } catch (err) {
-      console.warn(`⚠️ GitHub Search API fallback failed: ${err.message}`);
+    if (config.GITHUB_API_DISCOVERY_FALLBACK) {
+      onProgress('No candidates found. Trying GitHub Search API fallback...');
+      try {
+        const { fallbackDiscover } = await import('./discovery/githubApiFallback.js');
+        candidates = await fallbackDiscover(intent);
+      } catch (err) {
+        console.warn(`⚠️ GitHub Search API fallback failed: ${err.message}`);
+      }
+    } else {
+      // The flag was exported and never read, so the fallback ran unconditionally: with
+      // the discovery above sending no query, every real run silently became an API run
+      // capped at 3 keywords and sorted by stars -- the opposite of the per-keyword
+      // coverage this pipeline claims to provide. Saying why it did NOT run is what keeps
+      // "found nothing" and "did not look" apart.
+      onProgress('No candidates found. GitHub API fallback is off (GITHUB_API_DISCOVERY_FALLBACK=true enables it).');
     }
   }
 
   onProgress(`Discovered ${candidates.length} unique candidates. Pre-ranking...`);
-  const preRanked = preRank(candidates, intent);
-  const toEnrich = takePerKeyword(preRanked, intent.keywords || [], config.PER_KEYWORD_LIMIT || 3);
+  // MAX_CANDIDATES was exported and never read: the enrichment pool had no cap at all.
+  const preRanked = preRank(candidates, intent).slice(0, config.MAX_CANDIDATES);
+  // was config.PER_KEYWORD_LIMIT, which config.js does not export: the `|| 3` fallback
+  // always won, and ENRICH_PER_KEYWORD -- the documented knob -- was dead.
+  const toEnrich = takePerKeyword(preRanked, intent.keywords || [], config.ENRICH_PER_KEYWORD);
 
   onProgress(`Enriching top ${toEnrich.length} repositories...`);
   const enriched = await enrichRepos(toEnrich, deps.enrich);
@@ -244,7 +279,12 @@ export async function runPipeline(idea, options = {}) {
     const dry = !!options.dryRun;
     const onProgress = options.onProgress || (() => {});
     const mocks = dry ? createDryRunMocks(idea) : null;
-    const deps = buildPhaseDeps(dry, mocks);
+    // One budget per run, not per process: two runs in the same process must not inherit
+    // each other's spend. A dry run counts nothing -- it calls nothing.
+    const budget = dry
+      ? NOOP_BUDGET
+      : createBudget({ maxLlmCalls: config.MAX_LLM_CALLS, maxHttpRequests: config.MAX_HTTP_REQUESTS });
+    const deps = buildPhaseDeps(dry, mocks, budget);
 
     // --- Resume: restarts from saved intermediates (skips discovery/enrich/rank) ---
     const resumed = !dry && options.resume ? await tryResume() : null;
@@ -291,8 +331,12 @@ export async function runPipeline(idea, options = {}) {
     const dir = createProjectDir();
     writeDocs(dir, { intent, candidates, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport, rootCopy: !dry });
 
-    onProgress(`Done. Output in ${dir}`);
-    return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport };
+    // What the run actually spent, reported whether or not a ceiling was approached. The
+    // other half of why the budget exists: a run that cannot say what it spent cannot be
+    // told apart from a run that did nothing.
+    const spend = budget.report();
+    onProgress(`Done. Output in ${dir} — ${spend.llmCalls} model calls, ${spend.httpRequests} HTTP requests`);
+    return { dir, intent, ranked, repoAnalyses, modules, moduleAnalyses, inspiration, criticalReview, finalReport, spend };
   } finally {
     sentinel.deactivate();
   }
