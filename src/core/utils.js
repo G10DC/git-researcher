@@ -109,7 +109,12 @@ export async function withRetry(fn, { retries = 3, delayMs = 1000 } = {}) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await fn(attempt);
-    } catch {
+    } catch (err) {
+      // An error may declare itself not worth retrying. A refused spend ceiling does:
+      // it is a decision, not a transient fault, and retrying it burned three attempts
+      // and three seconds before reporting the source as empty. Checked as a property,
+      // not a type, so this module stays dependency-free as its header claims.
+      if (err && err.noRetry) throw err;
       if (attempt < retries) await sleep(delayMs * attempt);
     }
   }

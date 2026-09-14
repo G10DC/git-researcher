@@ -17,6 +17,7 @@ import {
 import { withRetry, sleep } from '../core/utils.js';
 import { makeKey, DEFAULT_CACHE } from '../io/cache.js';
 import { parseSerp } from './serpParser.js';
+import { rethrowIfBudget } from '../core/budget.js';
 
 /**
  * Builds N single-keyword queries, each paired with its keyword.
@@ -101,7 +102,10 @@ async function fetchQueryHtml(query, fetchImpl, cache) {
     // /lite/ fallback endpoint (single attempt)
     try {
       html = await fetchDdg(fetchImpl, DUCKDUCKGO_LITE, query);
-    } catch {
+    } catch (err) {
+      // A refused budget is a decision, not a dead endpoint: degrading it here is what
+      // made the caller report "empty/blocked SERP" for a request never sent.
+      rethrowIfBudget(err);
       /* nothing more to do */
     }
   }

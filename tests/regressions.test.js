@@ -227,6 +227,61 @@ test('every module under src/ is reachable from an entry point', () => {
   assert.deepEqual(orphans, [], `imported by nothing: ${orphans.join(', ')}`);
 });
 
+// --- 15: a refused ceiling must stop the run, never look like an empty source -----
+//
+// The ceiling shipped swallowed. This pipeline degrades on purpose almost everywhere, so
+// the refusal was caught by the same handlers that absorb a blocked source: the discovery
+// reported "No results (empty/blocked SERP)" for requests it had never sent, which is the
+// exact defect this whole change set exists to remove, reintroduced from the other side.
+
+test('the ceiling stops the discovery instead of reading as "no candidates found"', async () => {
+  const { discoverAndRank, buildPhaseDeps } = await import('../src/pipeline.js');
+  const { createBudget, BudgetExceededError } = await import('../src/core/budget.js');
+  const deps = buildPhaseDeps(false, null, createBudget({ maxHttpRequests: 0 }));
+  await assert.rejects(
+    () => discoverAndRank({ keywords: ['x'], technologies: [] }, false, deps, () => {}),
+    BudgetExceededError,
+    'a refused ceiling was degraded into an empty candidate list'
+  );
+});
+
+test('the ceiling stops the inspiration fan-out instead of emptying every source', async () => {
+  const { gatherInspiration, buildPhaseDeps } = await import('../src/pipeline.js');
+  const { createBudget, BudgetExceededError } = await import('../src/core/budget.js');
+  const deps = buildPhaseDeps(false, null, createBudget({ maxHttpRequests: 0 }));
+  await assert.rejects(() => gatherInspiration({ keywords: ['x'] }, deps.inspiration), BudgetExceededError);
+});
+
+test('the ceiling is not recorded as a failed analysis', async () => {
+  const { analyzeRepoWithCritique } = await import('../src/analysis/repoAnalyzer.js');
+  const { buildPhaseDeps } = await import('../src/pipeline.js');
+  const { createBudget, BudgetExceededError } = await import('../src/core/budget.js');
+  const deps = buildPhaseDeps(false, null, createBudget({ maxLlmCalls: 0 }));
+  await assert.rejects(
+    () => analyzeRepoWithCritique(
+      { fullName: 'a/b', url: 'https://github.com/a/b', readme: 'x'.repeat(500) },
+      { keywords: ['x'] },
+      { ...deps.claudeMd, fetchIssues: async () => [] }
+    ),
+    BudgetExceededError,
+    'the ceiling was written into the report as "Analysis failed"'
+  );
+});
+
+test('withRetry does not retry an error that declares itself final', async () => {
+  const { withRetry } = await import('../src/core/utils.js');
+  let attempts = 0;
+  const final = Object.assign(new Error('final'), { noRetry: true });
+  await assert.rejects(() => withRetry(async () => { attempts++; throw final; }, { retries: 3, delayMs: 1 }));
+  assert.equal(attempts, 1, 'a ceiling was retried as though it were a transient fault');
+
+  // an ordinary failure is still retried: the generic contract must not disable the retry
+  attempts = 0;
+  const out = await withRetry(async () => { attempts++; throw new Error('boom'); }, { retries: 3, delayMs: 1 });
+  assert.equal(out, null);
+  assert.equal(attempts, 3);
+});
+
 // --- 14: the spend ceiling must be consulted, not merely declared -----------------
 //
 // budget.test.js proves the module counts. It does NOT prove the pipeline uses it, and

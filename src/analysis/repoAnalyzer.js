@@ -6,6 +6,7 @@
 
 import { runClaude as defaultRun } from '../core/claude.js';
 import { sanitizeScrapedContent } from '../core/utils.js';
+import { rethrowIfBudget } from '../core/budget.js';
 
 const ARCHAEOLOGIST_SYSTEM_PROMPT =
   'You are a Senior Software Engineer / Code Archaeologist skilled at reading and assessing ' +
@@ -110,6 +111,9 @@ export async function analyzeRepo(repo, intent, deps = {}) {
     const analysis = await run(buildArchaeologistPrompt(repo, intent, readme, issues, lowSignal), ARCHAEOLOGIST_SYSTEM_PROMPT);
     return { repo: repo.fullName, role: ARCHAEOLOGIST_ROLE, analysis };
   } catch (err) {
+    // A failed analysis becomes a note the report can carry. A refused ceiling must not:
+    // it would read as "this repo could not be analysed" for work never attempted.
+    rethrowIfBudget(err);
     return { repo: repo.fullName, role: ARCHAEOLOGIST_ROLE, analysis: `⚠️ Analysis failed for ${repo.fullName}: ${err.message}` };
   }
 }
@@ -124,6 +128,7 @@ export async function analyzeRepoCritique(repo, intent, deps = {}) {
     const critique = await run(buildAuditorPrompt(repo, intent, readme, issues, lowSignal), AUDITOR_SYSTEM_PROMPT);
     return { repo: repo.fullName, role: AUDITOR_ROLE, analysis: critique };
   } catch (err) {
+    rethrowIfBudget(err);
     return { repo: repo.fullName, role: AUDITOR_ROLE, analysis: `⚠️ Critique failed for ${repo.fullName}: ${err.message}` };
   }
 }

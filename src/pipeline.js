@@ -24,7 +24,7 @@ import { runAdversarialReview } from './analysis/adversarialReview.js';
 import { synthesizeReport } from './analysis/synthesizer.js';
 import { createProjectDir, writeDocs } from './io/reportWriter.js';
 import { createDryRunMocks } from './testing/mocks.js';
-import { createBudget, NOOP_BUDGET } from './core/budget.js';
+import { createBudget, NOOP_BUDGET, rethrowIfBudget } from './core/budget.js';
 import { runClaude, runClaudeJSONWithRetry } from './core/claude.js';
 
 let sentinelInstance = null;
@@ -206,6 +206,8 @@ export async function discoverAndRank(intent, dry, deps, onProgress) {
       // ever sent a DuckDuckGo request. Covered by tests/regressions.test.js (13).
       return searchRepos({ keywords: [kw], technologies: intent.technologies || [] }, deps.discovery)
         .catch(err => {
+          // The ceiling must not be readable as "this keyword found nothing".
+          rethrowIfBudget(err);
           console.warn(`⚠️ Discovery failed for '${kw}': ${err.message}`);
           return [];
         });
@@ -252,10 +254,12 @@ export async function discoverAndRank(intent, dry, deps, onProgress) {
  */
 export async function gatherInspiration(intent, deps = {}) {
   const tasks = [
-    (deps.hn ? deps.hn(intent) : searchHn(intent, deps)).catch(err => { console.warn(`⚠️ HN failed: ${err.message}`); return []; }),
-    (deps.npm ? deps.npm(intent) : searchNpm(intent, deps)).catch(err => { console.warn(`⚠️ npm failed: ${err.message}`); return []; }),
-    (deps.so ? deps.so(intent) : searchSo(intent, deps)).catch(err => { console.warn(`⚠️ StackOverflow failed: ${err.message}`); return []; }),
-    (deps.papers ? deps.papers(intent) : searchPapers(intent, deps)).catch(err => { console.warn(`⚠️ OpenAlex failed: ${err.message}`); return []; })
+    // A blocked source degrades to []; a refused budget does not. The two look identical
+    // downstream -- an empty list -- which is exactly why the ceiling has to pass through.
+    (deps.hn ? deps.hn(intent) : searchHn(intent, deps)).catch(err => { rethrowIfBudget(err); console.warn(`⚠️ HN failed: ${err.message}`); return []; }),
+    (deps.npm ? deps.npm(intent) : searchNpm(intent, deps)).catch(err => { rethrowIfBudget(err); console.warn(`⚠️ npm failed: ${err.message}`); return []; }),
+    (deps.so ? deps.so(intent) : searchSo(intent, deps)).catch(err => { rethrowIfBudget(err); console.warn(`⚠️ StackOverflow failed: ${err.message}`); return []; }),
+    (deps.papers ? deps.papers(intent) : searchPapers(intent, deps)).catch(err => { rethrowIfBudget(err); console.warn(`⚠️ OpenAlex failed: ${err.message}`); return []; })
   ];
   const results = await Promise.all(tasks);
   return {

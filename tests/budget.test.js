@@ -92,6 +92,33 @@ test('NOOP_BUDGET refuses nothing and leaves fetch untouched', async () => {
   assert.equal(NOOP_BUDGET.report().llmCalls, 0);
 });
 
+test('the error names a constant config.js actually exports', async () => {
+  // The first version derived the name from the kind and produced MAX_HTTP_CALLS, which
+  // does not exist. A message pointing at a constant nobody can find is the same defect
+  // this project keeps finding in its own documentation.
+  const config = await import('../src/core/config.js');
+  const b = createBudget({ maxHttpRequests: 0, maxLlmCalls: 0 });
+
+  assert.throws(() => b.countHttp(), (e) => {
+    assert.match(e.message, /MAX_HTTP_REQUESTS/);
+    assert.notEqual(config.MAX_HTTP_REQUESTS, undefined, 'the message names a constant config.js does not export');
+    return true;
+  });
+  assert.throws(() => b.countLlm(), (e) => {
+    assert.match(e.message, /MAX_LLM_CALLS/);
+    assert.notEqual(config.MAX_LLM_CALLS, undefined, 'the message names a constant config.js does not export');
+    return true;
+  });
+});
+
+test('a refusal declares itself not worth retrying', () => {
+  const b = createBudget({ maxHttpRequests: 0 });
+  assert.throws(() => b.countHttp(), (e) => {
+    assert.equal(e.noRetry, true, 'withRetry would retry the ceiling three times over');
+    return true;
+  });
+});
+
 test('two budgets do not share a count', () => {
   const a = createBudget({ maxLlmCalls: 2 });
   const b = createBudget({ maxLlmCalls: 2 });

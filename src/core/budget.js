@@ -14,18 +14,45 @@
 // say what it spent cannot be told apart from a run that did nothing. Every count is
 // reported whether or not a limit was reached.
 
+/** The config constant that raises each ceiling. Named, not derived: deriving it from
+ *  `kind` produced "MAX_HTTP_CALLS", which does not exist -- a message pointing at a
+ *  constant nobody can find is the defect this project keeps finding in its own docs. */
+const CEILING_CONSTANT = { llm: 'MAX_LLM_CALLS', http: 'MAX_HTTP_REQUESTS' };
+
 /** Raised when a run asks for more than its declared ceiling allows. */
 export class BudgetExceededError extends Error {
   constructor(kind, used, limit) {
     super(
       `${kind} budget exhausted: ${used} of ${limit} allowed in a single run. ` +
-      `Narrow the idea, or raise MAX_${kind.toUpperCase()}_CALLS in src/core/config.js.`
+      `Narrow the idea, or raise ${CEILING_CONSTANT[kind] ?? kind} in src/core/config.js.`
     );
     this.name = 'BudgetExceededError';
     this.kind = kind;
     this.used = used;
     this.limit = limit;
+    // A generic contract rather than a type check, so core/utils.withRetry can honour it
+    // without importing this module: utils.js declares itself dependency-free, and the
+    // package layout in docs/ARCHITECTURE.md rests on that being true. Retrying a ceiling
+    // is meaningless anyway -- it is a decision, and it will refuse again.
+    this.noRetry = true;
   }
+}
+
+/**
+ * Rethrows a budget refusal out of a catch that would otherwise degrade it.
+ *
+ * This pipeline degrades on purpose nearly everywhere: a blocked source returns [], a
+ * failed analysis becomes a note, and the run continues with partial results. That is
+ * right for a source that failed and wrong for a ceiling that refused, because the two
+ * produce the same silence downstream -- the discovery even reported "No results
+ * (empty/blocked SERP)" for requests it had never sent. A ceiling is a decision, not a
+ * fault: it must reach the caller intact.
+ *
+ * Call it first inside any catch that swallows errors.
+ * @param {unknown} err
+ */
+export function rethrowIfBudget(err) {
+  if (err instanceof BudgetExceededError) throw err;
 }
 
 /**
