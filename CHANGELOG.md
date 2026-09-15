@@ -3,6 +3,34 @@
 Format inspired by [Keep a Changelog](https://keepachangelog.com/). Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The test suite deleted the data real runs leave behind.** `cache.test.js` removed `.cache/`
+  recursively and two tests wrote into the real `projects/`, so `npm test` destroyed the cache of
+  every earlier run. The writing tests now run in a temporary working directory, and
+  `tests/isolation.test.js` asserts that canary data survives the suite.
+- **The dry run called the real model.** The dry-run cascade supplied `runClaudeJSON`, which no
+  module reads, and left out `runClaude`, which the specialist analyses read. Every `npm test`
+  spawned the claude CLI once per module; in CI those analyses failed quietly and the smoke test
+  passed anyway. The smoke test went from about 60s to 6s once the mock was supplied.
+- **A DuckDuckGo block was cached as an answer.** DuckDuckGo refuses automated clients with
+  HTTP 202, a 2xx, so the challenge page was cached for 72 hours and parsed as "no results". A
+  202 is now a `SerpBlockedError`: not retried, not cached, and the remaining queries are skipped
+  instead of asking again. Empty pages are not cached, and cache hits no longer wait for the
+  rate-limit delay.
+- **The inspiration sources threw a `TypeError` on a null payload.** All four now return `[]`,
+  and every source has non-2xx, malformed-body and null-payload tests.
+- **chronicle degraded silently** when its sibling directory was missing. It now warns, as
+  sentinel does.
+
+### Documentation
+
+- `ARCHITECTURE.md` describes `budget` and `egress`, no longer names Chromium for the real e2e,
+  and describes `check.mjs` as what it is. Coverage re-measured: 91.7% lines / 83.4% functions /
+  74.0% branch.
+
 ## [3.4.0] - 2026-09-14 - The run that had never run
 
 An audit of this repository against its own documentation. The headline defect is that
