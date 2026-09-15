@@ -1,7 +1,7 @@
 // src/core/budget.js
 // A declared ceiling on what one run may spend, and a count of what it did spend.
 //
-// SKILL.md says it plainly: "the cascade has no built-in request budget, so a vague query
+// SKILL.md used to say it plainly: "the cascade has no built-in request budget, so a vague query
 // can multiply discovery/analysis API calls". That was an honest warning attached to no
 // mechanism. It also mattered less than it looked, because the discovery was handing
 // searchRepos a bare string and sending no query at all -- fixing that wiring is what

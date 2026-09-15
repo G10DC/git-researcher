@@ -108,7 +108,7 @@ export const PER_KEYWORD = 2;
 export const ENRICH_PER_KEYWORD = 5;
 
 // --- Per-run spend ceiling ---
-// SKILL.md warns that "the cascade has no built-in request budget". That warning was
+// SKILL.md used to warn that "the cascade has no built-in request budget". That warning was
 // attached to no mechanism, and it mattered less than it looked only because the
 // discovery was sending no query at all. Now that it does, the fan-out is real and
 // bounded here. A typical run measures ~18 model calls and ~40 HTTP requests: these

@@ -1,7 +1,7 @@
 ---
 name: git-researcher
 status: implemented
-description: Given a software idea, discovers and analyzes relevant GitHub repositories via a cascade of specialized analysis agents, producing structured analysis documents and a final report. Use when researching existing GitHub projects or comparing open-source solutions for a new idea. Never run it on a vague, unbounded idea -- the cascade has no request cap and can multiply API calls; never trust scraped search results as ground truth.
+description: Given a software idea, discovers and analyzes relevant GitHub repositories via a cascade of specialized analysis agents, producing structured analysis documents and a final report. Use when researching existing GitHub projects or comparing open-source solutions for a new idea. Never run it on a vague, unbounded idea -- a vague idea multiplies discovery and analysis calls until the per-run ceiling stops the run; never trust scraped search results as ground truth.
 ---
 
 # GitResearcher
@@ -28,8 +28,9 @@ node src/pipeline.js --idea "<idea>"
 
 ## When NOT to use
 
-- **The idea is too vague to bound the search** — the cascade has no built-in request budget, so
-  a vague query can multiply discovery/analysis API calls; narrow the idea first.
+- **The idea is too vague to bound the search** — a vague query multiplies discovery and analysis
+  calls until the per-run ceiling (`MAX_LLM_CALLS` 40, `MAX_HTTP_REQUESTS` 150) aborts the run;
+  narrow the idea first.
 - **You need ground-truth data from GitHub's API, not scraped search results** — discovery
   sources include DuckDuckGo and GitHub repository page HTML scraping (`src/discovery/duckSearch.js`, `src/discovery/repoEnricher.js`), which breaks silently when
   target markup changes; treat results as leads to verify, not verified facts.
