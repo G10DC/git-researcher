@@ -415,3 +415,24 @@ test('with the API fallback off, an empty discovery says so instead of staying s
   assert.equal(candidates.length, 0);
   assert.ok(messages.some((m) => /fallback is off/i.test(m)), `no message said why: ${messages.join(' | ')}`);
 });
+
+// --- 17: the dry run must inject every model call a module makes -------------------
+// cascadeOrchestrator.js:16 reads deps.runClaude for the specialist analyses. The dry
+// cascade supplied runClaudeJSON -- read by no module -- and left runClaude out, so every
+// "dry" run, and every `npm test`, spawned the real claude CLI once per module. In CI there
+// is no binary: those analyses failed quietly and the smoke test passed anyway.
+
+test('a dry run injects runClaude wherever a module reads it, and no key nobody reads', async () => {
+  const { buildPhaseDeps } = await import('../src/pipeline.js');
+  const dry = buildPhaseDeps(true, {
+    mockIntent: () => ({}), mockGetPage: async () => '', mockClaudeMd: async () => '',
+    mockModules: () => ({}), mockFetch: async () => ({ text: async () => '' }),
+    mockHn: async () => [], mockNpm: async () => [], mockSo: async () => [], mockPapers: async () => []
+  });
+  assert.equal(typeof dry.cascade.runClaude, 'function', 'the dry cascade would call the real claude CLI');
+  assert.equal(typeof dry.cascade.runClaudeJSONWithRetry, 'function');
+  assert.equal(typeof dry.intent.runClaudeJSONWithRetry, 'function');
+  for (const [phase, deps] of Object.entries(dry)) {
+    assert.ok(!('runClaudeJSON' in deps), `${phase}.runClaudeJSON is injected but no module reads it`);
+  }
+});

@@ -110,10 +110,9 @@ export async function tryResume() {
 export function buildPhaseDeps(dry, mocks, budget = NOOP_BUDGET) {
   if (dry && mocks) {
     return {
-      intent: { 
-        runClaudeJSON: async () => mocks.mockIntent(),
-        runClaudeJSONWithRetry: async () => mocks.mockIntent()
-      },
+      // Only the keys a module reads (intentExtractor.js:23). runClaudeJSON was injected
+      // here too and read by nobody.
+      intent: { runClaudeJSONWithRetry: async () => mocks.mockIntent() },
       // NOOP_CACHE on every stage that caches. This is not tidiness: the cache key is
       // makeKey('repo', fullName), with no mode in it, so a dry run used to write the
       // fabricated pages from testing/mocks.js into the same .cache the real run reads.
@@ -124,8 +123,11 @@ export function buildPhaseDeps(dry, mocks, budget = NOOP_BUDGET) {
       // fetchIssues is explicit even in dry mode: its absence is what made the real
       // runs quietly evidence-free, so the shape is stated in both branches now.
       claudeMd: { runClaude: async (prompt) => mocks.mockClaudeMd(prompt), fetchIssues: async () => [] },
+      // cascadeOrchestrator.js:16-17 reads runClaude (specialists) and runClaudeJSONWithRetry
+      // (breakdown). The mock supplied runClaudeJSON, which nothing reads, and left runClaude
+      // out -- so the specialists of every dry run called the real claude CLI.
       cascade: {
-        runClaudeJSON: async () => mocks.mockModules(),
+        runClaude: async (prompt) => mocks.mockClaudeMd(prompt),
         runClaudeJSONWithRetry: async () => mocks.mockModules()
       },
       inspiration: {

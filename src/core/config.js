@@ -55,7 +55,10 @@ export const RANKING_WEIGHTS = {
   w_recency: 0.5,
 };
 
-/** Constant realistic browser User-Agent (rotation on a single IP looks more bot-like). */
+/** Constant browser User-Agent (rotation on a single IP looks more bot-like).
+ *  An honest one was measured on 2026-09-15 and refused: DuckDuckGo answered HTTP 202 with a
+ *  challenge page and zero results on both endpoints, against 200 and seven results for this
+ *  one. Both SERP hosts allow everything in robots.txt; duckSearch reports a 202 as a block. */
 export const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
