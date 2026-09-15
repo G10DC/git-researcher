@@ -394,3 +394,24 @@ test('a real run hands repoAnalyzer a way to fetch open issues', async () => {
   assert.equal(dry.inspiration.cache, NOOP_CACHE);
   assert.notEqual(real.enrich.cache, NOOP_CACHE, 'a real run must use the real cache');
 });
+
+// --- 16: with the API fallback off, an empty discovery says why ---------------------
+// GITHUB_API_DISCOVERY_FALLBACK was exported and never read. It is read now, and when it is
+// off the run must say that the fallback did not run -- otherwise "the fallback found
+// nothing" and "the fallback was never tried" look the same.
+
+test('with the API fallback off, an empty discovery says so instead of staying silent', async () => {
+  const { discoverAndRank } = await import('../src/pipeline.js');
+  const config = await import('../src/core/config.js');
+  assert.equal(config.GITHUB_API_DISCOVERY_FALLBACK, false, 'this test assumes the flag is unset');
+  const messages = [];
+  const fetchImpl = async () => ({ ok: true, status: 200, text: async () => '<html><body></body></html>' });
+  const { candidates } = await discoverAndRank(
+    { keywords: ['x'], technologies: [] },
+    false,
+    { discovery: { fetchImpl, cache: NOOP_CACHE }, enrich: { getPage: async () => '', cache: NOOP_CACHE } },
+    (m) => messages.push(m)
+  );
+  assert.equal(candidates.length, 0);
+  assert.ok(messages.some((m) => /fallback is off/i.test(m)), `no message said why: ${messages.join(' | ')}`);
+});

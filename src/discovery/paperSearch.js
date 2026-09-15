@@ -40,7 +40,7 @@ export async function searchPapers(intent, deps = {}) {
     clearTimeout(timer);
   }
 
-  const works = Array.isArray(data.results) ? data.results : [];
+  const works = Array.isArray(data?.results) ? data.results : [];
   const results = works.map((w) => {
     const venue = w.primary_location && w.primary_location.source && w.primary_location.source.display_name;
     return {

@@ -35,7 +35,7 @@ export async function searchHn(intent, deps = {}) {
     clearTimeout(timer);
   }
 
-  const hits = Array.isArray(data.hits) ? data.hits : [];
+  const hits = Array.isArray(data?.hits) ? data.hits : [];
   const results = hits.map((h) => ({
     title: h.title || '(untitled)',
     summary: `${h.points ?? 0} points · ${h.num_comments ?? 0} comments`,

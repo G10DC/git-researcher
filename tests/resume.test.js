@@ -8,6 +8,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tryResume } from '../src/pipeline.js';
 import { PATH_PROJECTS } from '../src/core/config.js';
+import { useSandboxCwd } from './helpers/sandbox.js';
+
+// Isolated from the real .cache and projects/: see tests/helpers/sandbox.js and
+// tests/isolation.test.js.
+useSandboxCwd('resume');
 
 const TS = '99991231_235959'; // "future" -> latest in time order
 const dir = path.join(PATH_PROJECTS, TS);

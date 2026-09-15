@@ -117,3 +117,36 @@ test('gatherInspiration fans out in parallel and degrades a failing source to []
   assert.equal(out.so.length, 1);
   assert.deepEqual(out.papers, []);
 });
+
+// --- error paths, for every source --------------------------------------------------
+// Only HN had an error test. A source is the place where the network is least polite, and
+// a null body used to reach `data.hits` and throw a TypeError instead of a readable error.
+
+const SOURCES = [
+  ['hn', searchHn, /HN API HTTP 503/],
+  ['npm', searchNpm, /npm API HTTP 503/],
+  ['so', searchSo, /Stack Exchange API HTTP 503/],
+  ['papers', searchPapers, /OpenAlex API HTTP 503/],
+];
+
+for (const [name, search, httpError] of SOURCES) {
+  test(`${name}: a non-2xx response rejects naming the source, and caches nothing`, async () => {
+    let writes = 0;
+    const cache = { get: async () => null, set: async () => { writes++; } };
+    const fetchImpl = async () => ({ ok: false, status: 503, json: async () => ({}) });
+    await assert.rejects(() => search({ keywords: ['x'] }, { fetchImpl, cache }), httpError);
+    assert.equal(writes, 0, 'a failed request was cached as if it were a result');
+  });
+
+  test(`${name}: a malformed body rejects instead of returning a partial result`, async () => {
+    const fetchImpl = async () => ({ ok: true, json: async () => { throw new SyntaxError('Unexpected token <'); } });
+    await assert.rejects(() => search({ keywords: ['x'] }, { fetchImpl, cache: NOOP_CACHE }), SyntaxError);
+  });
+
+  test(`${name}: a null or shapeless payload yields [] rather than a TypeError`, async () => {
+    for (const body of [null, {}, { unexpected: true }]) {
+      const res = await search({ keywords: ['x'] }, { fetchImpl: jsonFetch(body), cache: NOOP_CACHE });
+      assert.deepEqual(res, [], `payload ${JSON.stringify(body)}`);
+    }
+  });
+}

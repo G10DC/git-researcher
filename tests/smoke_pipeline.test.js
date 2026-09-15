@@ -7,6 +7,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runPipeline } from '../src/pipeline.js';
+import { useSandboxCwd } from './helpers/sandbox.js';
+
+// Isolated from the real .cache and projects/: see tests/helpers/sandbox.js and
+// tests/isolation.test.js.
+useSandboxCwd('smoke');
 
 test('runPipeline dryRun generates all structured documents', async () => {
   const result = await runPipeline('distributed rust vector database demo', {

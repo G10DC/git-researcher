@@ -34,7 +34,7 @@ export async function searchNpm(intent, deps = {}) {
     clearTimeout(timer);
   }
 
-  const objects = Array.isArray(data.objects) ? data.objects : [];
+  const objects = Array.isArray(data?.objects) ? data.objects : [];
   const results = objects.map((o) => {
     const p = o.package || {};
     const score = (o.score && o.score.final) ?? 0;

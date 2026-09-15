@@ -55,7 +55,7 @@ export async function searchSo(intent, deps = {}) {
     clearTimeout(timer);
   }
 
-  const items = Array.isArray(data.items) ? data.items : [];
+  const items = Array.isArray(data?.items) ? data.items : [];
   const results = items.map((it) => ({
     title: unescapeHtml(it.title),
     summary: `${it.score ?? 0} votes · ${it.answer_count ?? 0} answers`,

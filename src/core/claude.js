@@ -55,8 +55,22 @@ async function getChronicle() {
   try {
     const { Chronicle } = await import('../../../chronicle/lib/chronicle.js');
     chronicleInstance = new Chronicle();
-  } catch {
-    chronicleInstance = { compressLog: (t) => t };
+  } catch (err) {
+    // Same shape as sentinel in pipeline.js: chronicle resolves from a sibling directory,
+    // present in the installed-skills layout and absent in a plain clone and in CI. The
+    // bare catch that used to live here swapped prompt compression for a pass-through and
+    // said nothing. Degrading is acceptable -- prompts go out uncompressed and cost more --
+    // but a silent degradation looks exactly like a working one.
+    chronicleInstance = { active: false, reason: err.code || err.message, compressLog: (t) => t };
+    if (!process.env.GR_SILENCE_CHRONICLE_WARNING) {
+      console.warn(
+        '⚠️  Prompt compression NOT active: chronicle could not be loaded from ' +
+        `../../../chronicle/lib/chronicle.js (${chronicleInstance.reason}).
+` +
+        '   Prompts are sent uncompressed. Install chronicle as a sibling directory, or set ' +
+        'GR_SILENCE_CHRONICLE_WARNING=1 to accept this.'
+      );
+    }
   }
   return chronicleInstance;
 }

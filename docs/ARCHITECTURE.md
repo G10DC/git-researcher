@@ -1,7 +1,7 @@
 # Architecture - GitResearcher
 
 A Node.js (ESM) tool that turns a textual idea into a set of analysis documents, discovering real
-GitHub repositories (via DuckDuckGo + dorks) and analyzing them with specialized specialized analysis agents in a
+GitHub repositories (via DuckDuckGo + dorks) and analyzing them with specialized analysis agents in a
 cascade. Diagrams in [Mermaid](https://mermaid.js.org/) (rendered on GitHub).
 
 ## 1. End-to-end pipeline
@@ -29,6 +29,10 @@ flowchart TD
     CLAUDE -.-> ANALYZE
     CLAUDE -.-> CASCADE
     CLAUDE -.-> SYNTH
+    GUARD[(core / budget + egress<br/>counted, allowlisted fetch and model calls)] -.-> SEARCH
+    GUARD -.-> ENRICH
+    GUARD -.-> INSPIRATION
+    GUARD -.-> ANALYZE
 ```
 
 Each phase is isolated: a non-fatal failure saves partials and continues
@@ -48,6 +52,8 @@ flowchart LR
         UTL[utils<br/>withRetry·runPool]
         ERR[errors<br/>ClaudeError·…]
         CLD[claude<br/>CLI wrapper]
+        BUD[budget<br/>per-run ceiling]
+        EGR[egress<br/>host allowlist]
     end
     subgraph DISC[discovery]
         IEX[intentExtractor]
@@ -90,11 +96,18 @@ flowchart LR
     ADV --> CLD
     SY --> CLD
     CLD --> ERR
+    RE --> EGR
+    DS --> BUD
+    RA --> BUD
+    PL --> BUD
+    PL --> EGR
 ```
 
 **Dependencies point downward** (arrows go from consumers to providers):
 `entry -> pipeline -> {core, discovery, analysis, io, testing}`. `core` does not depend on any other
-package (foundation). No module imports from `index.js` (no cycles).
+package (foundation). `budget` and `egress` import nothing, and `utils.withRetry` honours a
+generic `noRetry` property instead of importing `budget`, so that stays true. No module imports
+from `index.js` (no cycles).
 
 ## 3. Key contracts (dependency injection)
 
@@ -114,6 +127,13 @@ mocks -> testability without network and without mocking ESM.
 | `synthesizer.synthesizeReport` | `{ runClaude? }`, `inspiration = {}`, `criticalReview = ''` |
 | `discovery/ranker.takePerKeyword` | PURE (no deps) - per-keyword coverage |
 | `core/claude.runClaude` | `{ spawn? }` (injectable spawner) |
+| `core/budget.createBudget` | `{ maxLlmCalls?, maxHttpRequests? }` -> `countLlm`, `countHttp`, `wrapFetch(fetchImpl)`, `report()` |
+| `core/egress.guardFetch` | `(fetchImpl?, hosts = ALLOWED_HOSTS)` -> fetch that rejects an undeclared host |
+| `pipeline.buildPhaseDeps` | `(dry, mocks, budget = NOOP_BUDGET)`: composes `budget.wrapFetch(guardFetch())` into every key a module reads |
+
+A refused ceiling (`BudgetExceededError`) and a denied host (`EgressDeniedError`) are decisions,
+not faults: every degrading `catch` rethrows them (`rethrowIfBudget`) and `withRetry` does not
+retry them. Otherwise a refusal reads as "this source returned nothing".
 
 ## 4. Output documents
 
@@ -124,12 +144,18 @@ mocks -> testability without network and without mocking ESM.
 
 ## 5. Validation strategy
 
-- `node --check` + **import-smoke** (`scripts/check.mjs`) on every module.
+- `node --check` + **import-smoke** (`scripts/check.mjs`): asserts a module exports the names its
+  callers expect, one module per invocation. CI runs it on the core contracts (`config`, `budget`,
+  `egress`, `pipeline`) -- the check that would have caught `config.PER_KEYWORD_LIMIT`.
 - **Unit tests** (offline, with DI mocks): ranker, serpParser, duckSearch, repoEnricher, claude
   (mock spawn), cache, errors, utils, reportWriter, resume, inspiration sources (hn/npm/so/paper)
-  + `formatInspiration` + `gatherInspiration`.
+  + `formatInspiration` + `gatherInspiration`, budget, egress.
+- **Isolation** (`tests/isolation.test.js`): the tests that use the real `.cache` and `projects`
+  defaults run inside a temporary working directory, and a guard asserts a real run's data
+  survives the suite.
 - **Smoke e2e** (`dryRun`): whole pipeline with mocks.
-- **Real e2e** (manual): requires an authenticated `claude` CLI + DuckDuckGo + Chromium.
+- **Real e2e** (manual): requires an authenticated `claude` CLI (`claude auth status`) and network
+  access. No browser: the enricher uses native fetch.
 - **Coverage**: 90.9% lines / 81.0% functions / 68.2% branch, measured over `src/` only with
   `node --test --experimental-test-coverage --test-coverage-include="src/**"`. The command is
   quoted because the previous figures (96.2 / 93.2 / 80.7) could not be reproduced by any

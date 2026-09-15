@@ -7,6 +7,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { makeKey, getCache, setCache } from '../src/io/cache.js';
 import { CACHE_DIR } from '../src/core/config.js';
+import { useSandboxCwd } from './helpers/sandbox.js';
+
+// Isolated from the real .cache and projects/: see tests/helpers/sandbox.js and
+// tests/isolation.test.js.
+useSandboxCwd('cache');
 
 test('makeKey is deterministic', () => {
   assert.equal(makeKey('ddg', 'site:github.com rust'), makeKey('ddg', 'site:github.com rust'));
